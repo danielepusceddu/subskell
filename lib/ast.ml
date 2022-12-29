@@ -40,6 +40,11 @@ type typesig_or_decl =
 
 type program = typesig list * declaration list * expr
 
+exception UnboundVar of string 
+type typenv = ide -> typing
+
+let tbottom x = raise (UnboundVar ("Unbound identifier " ^ x))
+
 let explode_typesig_or_decl_list (tdl: typesig_or_decl list) : (typesig list * declaration list) =
   let rec helper tdl tl dl = 
     match tdl with

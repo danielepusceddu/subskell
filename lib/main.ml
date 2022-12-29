@@ -34,13 +34,28 @@ let rec typecheck typenv = function
   | EVar x -> typenv x
   ;;
 
-let respects_sig (definition: expr) (tsig: typing) (tenv) =
+let rec respects_sig (definition: expr) (tsig: typing) (tenv: typenv) =
   match (definition, tsig) with
-    | (EFun(x, expr), TFun(t1,t2)) -> 
+    | (EFun(x, expr), TFun(t1,t2)) ->
+        (* assign to each subsequent binder the leftmost terminal type of the signature *)
         let tenv' y = if x=y then t1 else tenv y in
-        (typecheck tenv' expr) = t2
-
-    | (EFun(_,_), _) -> false
+        respects_sig expr t2 tenv'
 
     | (def, typ) -> (typecheck tenv def) = typ
-;;
+
+let bind f x v = fun y -> if x=y then v else f y
+
+let rec typenv_of_typesigs = function
+  | [] -> tbottom
+  | (ide,ty)::t -> bind (typenv_of_typesigs t) ide ty
+
+let typecheck_prog (ts,ds,main) =
+  let (tenv: typenv) = typenv_of_typesigs ts in
+
+  assert (List.fold_left
+    (fun b (ide,def) -> b && respects_sig def (tenv ide) tenv)
+    true
+    ds
+  );
+
+  typecheck tenv main

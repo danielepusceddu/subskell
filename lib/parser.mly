@@ -39,7 +39,7 @@ open Ast
 %start <program> prog
 
 (* PRECEDENCE *)
-%left TO
+%right TO
 %left ELSE
 %left AND OR
 %left PLUS MINUS
