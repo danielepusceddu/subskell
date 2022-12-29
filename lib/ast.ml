@@ -1,3 +1,5 @@
+open Help
+
 type ide = string
 
 type typing = 
@@ -47,4 +49,11 @@ let explode_typesig_or_decl_list (tdl: typesig_or_decl list) : (typesig list * d
         | SDecl d -> (tailt, d::taild)
       )
   in helper tdl [] []
+;;
+
+let assert_no_doubles (dl: declaration list) (tl: typesig list) = 
+  let dl_names = List.fold_left (fun acc (x,_) -> x::acc) [] dl in
+  let tl_names = List.fold_left (fun acc (x,_) -> x::acc) [] tl in
+  if not (has_dups dl_names) && not (has_dups tl_names)
+    then () else failwith "Double declaration or type signature"
 ;;
