@@ -1,2 +1,3 @@
 open SubskellLib.Main;;
 open SubskellLib.Ast;;
+open SubskellLib.Typecheck;;
