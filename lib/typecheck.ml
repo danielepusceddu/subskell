@@ -1,17 +1,39 @@
 open Ast
+open Prettyprint
 
 type typenv = (ide -> typing option)
+
+let is_arithop = function
+    BOPlus | BOTimes | BOMinus -> true
+  | _ -> false
+
+let is_boolop = function
+    BOAnd | BOOr -> true
+  | _ -> false
+
 let rec typecheck (typenv: typenv) = function
-  | EConst(CNum _)
-  | EBinOp(_, BOPlus, _)
-  | EBinOp(_, BOTimes, _)
-  | EBinOp(_, BOMinus, _) -> Ok TInt
+  | EConst(CNum _) -> Ok TInt
 
-  | EConst(CBool _)
-  | EBinOp(_, BOAnd, _)
-  | EBinOp(_, BOOr, _)
-  | EUnOp(UONot, _) -> Ok TBool
+  | EBinOp(e1, op, e2) when is_arithop op -> (
+    if typecheck typenv e1 = Ok TInt && typecheck typenv e2 = Ok TInt 
+    then Ok TInt
+    else Error ("Ill-typed operand on " ^ string_of_binop op)
+  )
 
+  | EConst(CBool _) -> Ok TBool
+
+  | EBinOp(e1, op, e2) -> (
+    if typecheck typenv e1 = Ok TBool && typecheck typenv e2 = Ok TBool 
+    then Ok TBool
+    else Error ("Ill-typed operand on " ^ string_of_binop op)
+  )
+
+  | EUnOp(UONot, e) -> (
+    if typecheck typenv e = Ok TBool
+    then Ok TBool
+    else Error ("Ill-typed operand on " ^ string_of_unop UONot)
+  )
+    
   | EFun(x, expr) -> (match typecheck typenv expr with 
       | Ok(t) -> (match typenv x with 
           | Some(t2) -> (Ok (TFun(t2, t)))
