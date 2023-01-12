@@ -19,6 +19,8 @@ open Ast
 %token TRUE
 %token FALSE
 %token EQUAL
+%token LET
+%token IN
 
 (* SEPARATORS *)
 %token LPAREN
@@ -76,6 +78,7 @@ expr:
     | LPAREN e1 = expr RPAREN LPAREN e2 = expr RPAREN { EApp(e1, e2) }
 
     | IF; e1 = expr; THEN; e2 = expr; ELSE; e3 = expr; { EIf(e1, e2, e3) }
+    | LET x = IDE EQUAL e1 = expr IN e2 = expr { ELetIn(x,e1,e2) }
 
     | c = const { EConst(c) }
     | e1 = expr; op = binop; e2 = expr; { EBinOp(e1, op, e2) }

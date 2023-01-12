@@ -36,6 +36,8 @@ rule read =
   | "->" { TO }
   | "do" { DO }
   | "main" { MAIN }
+  | "let" { LET }
+  | "in" { IN }
   | "\\" { LAMBDA }
   | "." { DOT }
 

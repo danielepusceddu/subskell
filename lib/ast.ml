@@ -29,6 +29,7 @@ type expr =
   | EBinOp of expr * binop * expr
   | EUnOp of unop * expr
   | EVar of ide
+  | ELetIn of ide * expr * expr
 
 type typesig = ide * typing
 

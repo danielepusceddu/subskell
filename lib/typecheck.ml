@@ -3,6 +3,8 @@ open Prettyprint
 
 type typenv = (ide -> typing option)
 
+let bind f x v = fun y -> if x=y then v else f y
+
 let is_arithop = function
     BOPlus | BOTimes | BOMinus -> true
   | _ -> false
@@ -64,6 +66,12 @@ let rec typecheck (typenv: typenv) = function
     )
     | Ok(_) -> Error "If: condition is not a boolean"
   )
+
+  | ELetIn(x, e1, e2) -> (match typecheck typenv e1 with
+    | Ok(t) -> typecheck (bind typenv x (Some(t))) (EApp(EFun(x, e2), e1))
+    | Error(err) -> Error(err)
+  )
+
   | EVar x -> match typenv x with
     | Some t -> Ok t
     | None -> Error ("Identifier " ^ x ^ " with no type")
@@ -81,8 +89,6 @@ let rec respects_sig (definition: expr) (tsig: typing) (tenv: typenv) =
         | Ok(t) -> if t = typ then Ok () else Error(DifferentType (typ,t))
         | Error(err) -> Error(TypingError err)
       )
-
-let bind f x v = fun y -> if x=y then v else f y
 
 let rec typenv_of_typesigs = function
   | [] -> tbottom
