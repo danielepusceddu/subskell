@@ -42,6 +42,7 @@ open Ast
 
 (* PRECEDENCE *)
 %right TO
+%left IN
 %left ELSE
 %left AND OR
 %left PLUS MINUS
