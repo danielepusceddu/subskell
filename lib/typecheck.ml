@@ -94,19 +94,25 @@ let rec typenv_of_typesigs = function
   | [] -> tbottom
   | (ide,ty)::t -> bind (typenv_of_typesigs t) ide (Some ty)
 
-type progCheckError = NoTypeSignature | SigError of sigError
-let typecheck_prog ((ts,ds,main): program) =
+type progCheckError = 
+  | NoTypeSignature of ide
+  | SigError of ide * sigError
+  | TypecheckError of string
+let typecheck_prog ((ts,ds,main): program) : (typing, progCheckError list) result =
   let (tenv: typenv) = typenv_of_typesigs ts in
-  let errlist = (List.fold_left
+  let tsigerrlist = (List.fold_left
     (fun l (ide,def) -> match tenv ide with 
-      | None -> (ide, NoTypeSignature)::l
+      | None -> (NoTypeSignature ide)::l
       | Some t -> (match respects_sig def t tenv with
         | Ok() -> l
-        | Error(err) -> (ide, SigError err)::l
+        | Error(err) -> (SigError(ide, err))::l
       )
     )
     []
     ds) in
-  match errlist with
-    | [] -> Ok(typecheck tenv main)
-    | l -> Error(l)
+  let typing = typecheck tenv main in
+  match (tsigerrlist,typing) with
+    | ([],Ok(t)) -> Ok(t)
+    | (l, Ok(_)) -> Error l
+    | (l, Error(err)) -> Error((TypecheckError(err))::l)
+;;
