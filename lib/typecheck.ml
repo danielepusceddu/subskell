@@ -72,10 +72,13 @@ let rec typecheck (typenv: typenv) = function
     | Error(err) -> Error(err)
   )
 
-  | EVar x -> match typenv x with
+  | EVar x -> (match typenv x with
     | Some t -> Ok t
-    | None -> Error ("Identifier " ^ x ^ " with no type")
-  ;;
+    | None -> Error ("Identifier " ^ x ^ " with no type"))
+  | ERet(_) -> Error("ERet should be runtime only")
+  | EClosure(_) -> Error("EClosure should be runtime only")
+  | EThunk(_) -> Error("EThunk should be runtime only")
+;;
 
 type sigError = DifferentType of typing * typing | TypingError of string
 let rec respects_sig (definition: expr) (tsig: typing) (tenv: typenv) =
@@ -98,6 +101,7 @@ type progCheckError =
   | NoTypeSignature of ide
   | SigError of ide * sigError
   | TypecheckError of string
+
 let typecheck_prog ((ts,ds,main): program) : (typing, progCheckError list) result =
   let (tenv: typenv) = typenv_of_typesigs ts in
   let tsigerrlist = (List.fold_left

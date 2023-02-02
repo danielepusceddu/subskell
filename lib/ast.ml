@@ -21,7 +21,9 @@ type binop =
 type unop =
   | UONot
 
-type expr =
+type env = ide -> expr option and
+
+expr =
   | EConst of const
   | EFun of ide * expr
   | EApp of expr * expr
@@ -30,6 +32,11 @@ type expr =
   | EUnOp of unop * expr
   | EVar of ide
   | ELetIn of ide * expr * expr
+
+  (* runtime only *)
+  | ERet of expr
+  | EClosure of ide * expr * env (* shouldn't need list *)
+  | EThunk of expr * env (* for lazy evaluation *)
 
 type typesig = ide * typing
 
@@ -42,7 +49,9 @@ type typesig_or_decl =
 type program = typesig list * declaration list * expr
 
 type typenv = ide -> typing option
+type envstack = env list
 let tbottom _ = None
+let bottom _ = None
 
 let explode_typesig_or_decl_list (tdl: typesig_or_decl list) : (typesig list * declaration list) =
   let rec helper tdl tl dl = 
