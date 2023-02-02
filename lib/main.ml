@@ -51,6 +51,44 @@ let rec trace1_expr (ex: expr) (enstk: env list) : ((expr*env list) option, stri
   | ELetIn(ide, e1, e2) -> Ok(Some(EApp(EFun(ide, e2), e1), enstk))
     
     (* boring bs starts here *)
+    (* less eq: terminal *)
+    | EBinOp(EConst(CNum(n1)), BOLeq, EConst(CNum(n2))) -> Ok(Some(EConst(CBool(n1<=n2)), enstk))
+
+    (* equality: rhs not an integer *)
+    | EBinOp(EConst(CNum(n1)), BOLeq, e2) -> (match trace1_expr e2 enstk with
+      | Ok(None) -> Error("rhs of <= not an integer")
+      | Ok(Some(e2', enstk')) -> Ok(Some(EBinOp(EConst(CNum(n1)), BOLeq, e2'), enstk'))
+      | Error(err) -> Error(err)
+    )
+
+    (* equality: lhs and rhs not integers*)
+    | EBinOp(e1, BOLeq, e2) -> (match trace1_expr e1 enstk with
+      | Ok(None) -> Error("lhs of <= not an integer")
+      | Ok(Some(e1', enstk')) -> Ok(Some(EBinOp(e1', BOLeq, e2), enstk'))
+      | Error(err) -> Error(err)
+    )
+
+    (* equality: terminal *)
+    | EBinOp(EConst(CNum(n1)), BOEq, EConst(CNum(n2))) -> Ok(Some(EConst(CBool(n1=n2)), enstk))
+    | EBinOp(EConst(CBool(b1)), BOEq, EConst(CBool(b2))) -> Ok(Some(EConst(CBool(b1=b2)), enstk))
+
+    (* equality: constants of different types / functions *)
+    | EBinOp(EConst(_), BOEq, EConst(_)) -> Error("Equality between different types or between functions")
+
+    (* equality: rhs not a constant*)
+    | EBinOp(EConst(c), BOEq, e2) -> (match trace1_expr e2 enstk with
+      | Ok(None) -> Error("wat")
+      | Ok(Some(e2', enstk')) -> Ok(Some(EBinOp(EConst(c), BOEq, e2'), enstk'))
+      | Error(err) -> Error(err)
+    )
+
+    (* equality: lhs and rhs not a constant*)
+    | EBinOp(e1, BOEq, e2) -> (match trace1_expr e1 enstk with
+      | Ok(None) -> Error("wat")
+      | Ok(Some(e1', enstk')) -> Ok(Some(EBinOp(e1', BOEq, e2), enstk'))
+      | Error(err) -> Error(err)
+    )
+
     | EBinOp(EConst(CNum(n1)), BOPlus, EConst(CNum(n2))) -> Ok(Some(EConst(CNum(n1+n2)), enstk))
     | EBinOp(EConst(CNum(n1)), BOPlus, e2) -> (match trace1_expr e2 enstk with
       | Ok(None) -> Error("rhs of + is not an integer")

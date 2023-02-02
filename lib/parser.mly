@@ -18,6 +18,8 @@ open Ast
 %token ELSE
 %token TRUE
 %token FALSE
+%token ISEQ
+%token ISLESSEQ
 %token EQUAL
 %token LET
 %token IN
@@ -44,6 +46,7 @@ open Ast
 %right TO
 %left IN
 %left ELSE
+%left ISEQ ISLESSEQ
 %left AND OR
 %left PLUS MINUS
 %left PRODUCT
@@ -110,4 +113,6 @@ variable:
     | MINUS { BOMinus }
     | AND { BOAnd }
     | OR { BOOr }
+    | ISEQ { BOEq }
+    | ISLESSEQ { BOLeq }
 

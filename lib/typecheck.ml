@@ -16,6 +16,26 @@ let is_boolop = function
 let rec typecheck (typenv: typenv) = function
   | EConst(CNum _) -> Ok TInt
 
+  | EBinOp(e1, BOEq, e2) -> (
+    let (r1,r2) = (typecheck typenv e1, typecheck typenv e2)
+    in match (r1,r2) with
+    | (Ok t1, Ok t2) when t1=t2 -> Ok TBool
+    | (Ok _, Ok _) -> Error("Equality between different types")
+    | (Error err, Ok _)
+    | (Ok _, Error err) -> Error(err)
+    | (Error err1, Error err2) -> Error (err1 ^ " " ^ err2)
+  )
+
+  | EBinOp(e1, BOLeq, e2) -> (
+    let (r1,r2) = (typecheck typenv e1, typecheck typenv e2)
+    in match (r1,r2) with
+    | (Ok TInt, Ok TInt) -> Ok TBool
+    | (Ok _, Ok _) -> Error("Ordering between types different than integers")
+    | (Error err, Ok _)
+    | (Ok _, Error err) -> Error(err)
+    | (Error err1, Error err2) -> Error (err1 ^ " " ^ err2)
+  )
+
   | EBinOp(e1, op, e2) when is_arithop op -> (
     if typecheck typenv e1 = Ok TInt && typecheck typenv e2 = Ok TInt 
     then Ok TInt
