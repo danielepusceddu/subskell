@@ -42,18 +42,25 @@ open Ast
 %start <program> prog
 
 (* PRECEDENCE *)
-%left IF
-%right TO
-%left IN
-%left ELSE
-%left LAMBDA LET
-%left EQUAL LESSEQ
+
+%right TO (* This precedence serves two purposes, since this token is used in both expression and typing rules:
+1. Reduce abstractions lastly, letting their body extend as far right as possible (by the relative position with all the other tokens);
+2. Right-associate the "->" type constructor (by the %right specification) *)
+%nonassoc IN ELSE (* Reduce let-ins and if-then-elses lastly (but before abstractions), so their rightmost subexpression extends as far right as possible *)
+
+(* Precedences for primitive operators, reduced in the following priority order (highest to lowest):
+1. Arithmetic
+2. Equality/Comparison
+3. Boolean 
+For example, "not 1 = 2 * 3" is parsed as "not (1 = (2 * 3))" *)
 %left AND OR
+%nonassoc NOT
+%left EQUAL LESSEQ
 %left PLUS MINUS
 %left PRODUCT
-%left NOT
-%left IDE LPAREN TRUE FALSE NUM
-%left APP
+
+%nonassoc IF LAMBDA LET IDE LPAREN TRUE FALSE NUM (* Tokens an expresison can start with. The relative priority level with respect to the level of APP determines the associativity of applications (left) *)
+%nonassoc APP (* Reduce applications eagerly as soon as two space-separated expressions are read. For example, "foo 1*2" is parsed as "(foo 1)*2" instead of "foo (1*2)" *)
 %%
 
 prog:
