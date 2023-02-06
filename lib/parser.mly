@@ -58,7 +58,7 @@ prog:
     | sl = separated_nonempty_list(VERTICAL, typesig_or_decl); DOT; VERTICAL; m = main; EOF { let (tl,dl) = explode_typesig_or_decl_list sl in assert_no_doubles dl tl; (tl, dl, m) }
 
 main:
-    | MAIN EQUAL DO LPAREN e1 = expr RPAREN LPAREN e2 = expr RPAREN { EApp(e1, e2) }
+    | MAIN EQUAL DO e = expr { e }
 
 typing:
     | INT { TInt }
