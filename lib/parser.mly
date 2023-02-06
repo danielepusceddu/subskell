@@ -42,16 +42,18 @@ open Ast
 %start <program> prog
 
 (* PRECEDENCE *)
+%left IF
 %right TO
 %left IN
 %left ELSE
+%left LAMBDA LET
 %left EQUAL LESSEQ
 %left AND OR
 %left PLUS MINUS
 %left PRODUCT
 %left NOT
-
-
+%left IDE LPAREN TRUE FALSE NUM
+%left APP
 %%
 
 prog:
@@ -78,7 +80,7 @@ typesig_or_decl:
 
 expr:
     | LAMBDA p = variable TO e = expr; { EFun(p, e) }
-    | LPAREN e1 = expr RPAREN LPAREN e2 = expr RPAREN { EApp(e1, e2) }
+    | e1 = expr e2 = expr { EApp(e1, e2) } %prec APP
 
     | IF; e1 = expr; THEN; e2 = expr; ELSE; e3 = expr; { EIf(e1, e2, e3) }
     | LET x = IDE EQUAL e1 = expr IN e2 = expr { ELetIn(x,e1,e2) }
