@@ -23,8 +23,7 @@ rule read =
   | "&&" { AND }
   | "||" { OR }
   | "not" { NOT }
-  | "?=" { ISEQ }
-  | "<=" { ISLESSEQ }
+  | "<=" { LESSEQ }
 
 
   | "(" { LPAREN }

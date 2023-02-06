@@ -18,8 +18,7 @@ open Ast
 %token ELSE
 %token TRUE
 %token FALSE
-%token ISEQ
-%token ISLESSEQ
+%token LESSEQ
 %token EQUAL
 %token LET
 %token IN
@@ -46,7 +45,7 @@ open Ast
 %right TO
 %left IN
 %left ELSE
-%left ISEQ ISLESSEQ
+%left EQUAL LESSEQ
 %left AND OR
 %left PLUS MINUS
 %left PRODUCT
@@ -85,6 +84,7 @@ expr:
     | LET x = IDE EQUAL e1 = expr IN e2 = expr { ELetIn(x,e1,e2) }
 
     | c = const { EConst(c) }
+    | e1 = expr; EQUAL; e2 = expr; { EBinOp(e1, BOEq, e2) }
     | e1 = expr; op = binop; e2 = expr; { EBinOp(e1, op, e2) }
     | o = unop; e = expr; { EUnOp(o, e) }
     | x = variable { EVar(x) }
@@ -113,6 +113,5 @@ variable:
     | MINUS { BOMinus }
     | AND { BOAnd }
     | OR { BOOr }
-    | ISEQ { BOEq }
-    | ISLESSEQ { BOLeq }
+    | LESSEQ { BOLeq }
 

@@ -6,7 +6,7 @@ let string_of_binop = function
   | BOTimes -> "*"
   | BOAnd -> "&&"
   | BOOr -> "||"
-  | BOEq -> "?="
+  | BOEq -> "="
   | BOLeq -> "<="
 
 let string_of_unop = function
