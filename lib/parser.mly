@@ -86,17 +86,17 @@ typesig_or_decl:
     | d = declaration { SDecl(d) }
 
 expr:
-    | LAMBDA p = variable TO e = expr; { EFun(p, e) }
-    | e1 = expr e2 = expr { EApp(e1, e2) } %prec APP
+    | LAMBDA p = variable TO e = expr; { ET(EFun(p, e)) }
+    | e1 = expr e2 = expr { ENT(EApp(e1, e2)) } %prec APP
 
-    | IF; e1 = expr; THEN; e2 = expr; ELSE; e3 = expr; { EIf(e1, e2, e3) }
-    | LET x = IDE EQUAL e1 = expr IN e2 = expr { ELetIn(x,e1,e2) }
+    | IF; e1 = expr; THEN; e2 = expr; ELSE; e3 = expr; { ENT(EIf(e1, e2, e3)) }
+    | LET x = IDE EQUAL e1 = expr IN e2 = expr { ENT(ELetIn(x,e1,e2)) }
 
-    | c = const { EConst(c) }
-    | e1 = expr; EQUAL; e2 = expr; { EBinOp(e1, BOEq, e2) }
-    | e1 = expr; op = binop; e2 = expr; { EBinOp(e1, op, e2) }
-    | o = unop; e = expr; { EUnOp(o, e) }
-    | x = variable { EVar(x) }
+    | c = const { ET(c) }
+    | e1 = expr; EQUAL; e2 = expr; { ENT(EBinOp(e1, BOEq, e2)) }
+    | e1 = expr; op = binop; e2 = expr; { ENT (EBinOp(e1, op, e2)) }
+    | o = unop; e = expr; { ENT (EUnOp(o, e)) }
+    | x = variable { ENT (EVar(x)) }
     | LPAREN e=expr RPAREN { e }
 
 const:

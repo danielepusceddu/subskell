@@ -1,5 +1,6 @@
 open Ast
 open Typecheck
+open Prettyprint
 
 let parse (s : string) : program =
   let lexbuf = Lexing.from_string s in
@@ -8,160 +9,93 @@ let parse (s : string) : program =
 
 let bind f x e x' = if x'=x then e else f x'
 
-let rec trace1_expr (ex: expr) (enstk: env list) : ((expr*env list) option, string) result = match ex with
-  | EConst(_)
-  | EFun(_, _) -> Ok None
-  | EClosure(_) -> Ok None
-
-  | EApp(EClosure(ide, expr1, saved), expr2) ->
-      Ok(Some(ERet expr1, (bind saved ide (Some(EThunk(expr2, List.hd enstk))))::enstk))
-  | EApp(EFun(ide, expr1), expr2) ->
-      Ok (Some(ERet expr1, (bind (List.hd enstk) ide (Some(EThunk(expr2, List.hd enstk))))::enstk))
-  | EApp(expr1, expr2) -> (
+let rec trace1_expr (ex: nonterm) (enstk: env list) : (expr*env list, string) result = match ex with
+  | EApp(ET(EClosure(ide, expr1, saved)), expr2) ->
+      Ok(ENT(ERet expr1), (bind saved ide (Some(ENT(EThunk(expr2, List.hd enstk))))::enstk))
+  | EApp(ET(EFun(ide, expr1)), expr2) ->
+      Ok (ENT(ERet expr1), (bind (List.hd enstk) ide (Some(ENT(EThunk(expr2, List.hd enstk)))))::enstk)
+  | EApp(ET(_), _) -> Error("lhs of apply not a function")
+  | EApp(ENT(expr1), expr2) -> (
       match trace1_expr expr1 enstk with
-      | Ok(None) -> Error("lhs of apply not a function")
-      | Ok(Some(expr1', en')) -> Ok(Some(
-          EApp(expr1', expr2), en'))
+      | Ok(expr1', en') -> Ok(ENT(EApp(expr1', expr2)), en')
       | Error(err) -> Error(err)
   )
 
-  | EIf(EConst(CBool(true)), e, _)
-  | EIf(EConst(CBool(false)), _, e) -> 
-      Ok(Some(e, enstk))
-  | EIf(e1, e2, e3) -> (match trace1_expr e1 enstk with
-    | Ok(None) -> Error("if without a boolean")
-    | Ok(Some(e1', enstk')) -> Ok(Some(EIf(e1', e2, e3), enstk'))
+  | EIf(ET(CBool(true)), e, _)
+  | EIf(ET(CBool(false)), _, e) -> 
+      Ok(e, enstk)
+  | EIf(ET(_), _, _) -> Error("trace: if without a boolean condition")
+
+  | EIf(ENT(e1), e2, e3) -> (match trace1_expr e1 enstk with
+    | Ok(e1', enstk') -> Ok(ENT(EIf(e1', e2, e3)), enstk')
     | Error(err) -> Error(err)
   )
 
-  | ERet(EFun(x,e)) ->
-      Ok(Some(EClosure(x,e, List.hd enstk), enstk))
-  | ERet(e) -> (match trace1_expr e enstk with
-    | Ok None -> Ok(Some(e, List.tl enstk))
-    | Ok(Some(e', enstk')) -> Ok(Some(ERet(e'), enstk'))
+  | ERet(ET(EFun(x,e))) ->
+      Ok(ET(EClosure(x,e, List.hd enstk)), enstk)
+  | ERet(ET(e)) -> Ok(ET(e), List.tl enstk)
+  | ERet(ENT(e)) -> (match trace1_expr e enstk with
+    | Ok(e', enstk') -> Ok(ENT(ERet(e')), enstk')
     | Error(err) -> Error(err)
   )
 
-  | EThunk(exp, saved) -> Ok(Some((ERet(exp), saved::enstk)))
+  | EThunk(exp, saved) -> Ok((ENT(ERet(exp)), saved::enstk))
 
   | EVar(ide) -> (match (List.hd enstk) ide with
-    | Some(e) -> Ok(Some(e, enstk))
+    | Some(e) -> Ok(e, enstk)
     | None -> Error("variable outside of scope"))
-    
-  | ELetIn(ide, e1, e2) -> Ok(Some(EApp(EFun(ide, e2), e1), enstk))
-    
-    (* boring bs starts here *)
-    (* less eq: terminal *)
-    | EBinOp(EConst(CNum(n1)), BOLeq, EConst(CNum(n2))) -> Ok(Some(EConst(CBool(n1<=n2)), enstk))
 
-    (* equality: rhs not an integer *)
-    | EBinOp(EConst(CNum(n1)), BOLeq, e2) -> (match trace1_expr e2 enstk with
-      | Ok(None) -> Error("rhs of <= not an integer")
-      | Ok(Some(e2', enstk')) -> Ok(Some(EBinOp(EConst(CNum(n1)), BOLeq, e2'), enstk'))
-      | Error(err) -> Error(err)
-    )
+  | ELetIn(ide, e1, e2) -> Ok(ENT(EApp(ET(EFun(ide, e2)), e1)), enstk)
 
-    (* equality: lhs and rhs not integers*)
-    | EBinOp(e1, BOLeq, e2) -> (match trace1_expr e1 enstk with
-      | Ok(None) -> Error("lhs of <= not an integer")
-      | Ok(Some(e1', enstk')) -> Ok(Some(EBinOp(e1', BOLeq, e2), enstk'))
-      | Error(err) -> Error(err)
-    )
-
-    (* equality: terminal *)
-    | EBinOp(EConst(CNum(n1)), BOEq, EConst(CNum(n2))) -> Ok(Some(EConst(CBool(n1=n2)), enstk))
-    | EBinOp(EConst(CBool(b1)), BOEq, EConst(CBool(b2))) -> Ok(Some(EConst(CBool(b1=b2)), enstk))
-
-    (* equality: constants of different types / functions *)
-    | EBinOp(EConst(_), BOEq, EConst(_)) -> Error("Equality between different types or between functions")
-
-    (* equality: rhs not a constant*)
-    | EBinOp(EConst(c), BOEq, e2) -> (match trace1_expr e2 enstk with
-      | Ok(None) -> Error("wat")
-      | Ok(Some(e2', enstk')) -> Ok(Some(EBinOp(EConst(c), BOEq, e2'), enstk'))
-      | Error(err) -> Error(err)
-    )
-
-    (* equality: lhs and rhs not a constant*)
-    | EBinOp(e1, BOEq, e2) -> (match trace1_expr e1 enstk with
-      | Ok(None) -> Error("wat")
-      | Ok(Some(e1', enstk')) -> Ok(Some(EBinOp(e1', BOEq, e2), enstk'))
-      | Error(err) -> Error(err)
-    )
-
-    | EBinOp(EConst(CNum(n1)), BOPlus, EConst(CNum(n2))) -> Ok(Some(EConst(CNum(n1+n2)), enstk))
-    | EBinOp(EConst(CNum(n1)), BOPlus, e2) -> (match trace1_expr e2 enstk with
-      | Ok(None) -> Error("rhs of + is not an integer")
-      | Ok(Some(e2', enstk')) -> Ok(Some(EBinOp(EConst(CNum(n1)), BOPlus, e2'), enstk'))
-      | Error(err) -> Error(err)
-    )
-    | EBinOp(e1, BOPlus, e2) -> (match trace1_expr e1 enstk with
-      | Ok(None) -> Error("lhs of + is not an integer")
-      | Ok(Some(e1', enstk')) -> Ok(Some(EBinOp(e1', BOPlus, e2), enstk'))
-      | Error(err) -> Error(err)
-    )
-
-  | EBinOp(EConst(CNum(n1)), BOMinus, EConst(CNum(n2))) -> Ok(Some(EConst(CNum(n1-n2)), enstk))
-  | EBinOp(EConst(CNum(n1)), BOMinus, e2) -> (match trace1_expr e2 enstk with
-    | Ok(None) -> Error("rhs of - is not an integer")
-    | Ok(Some(e2', enstk')) -> Ok(Some(EBinOp(EConst(CNum(n1)), BOMinus, e2'), enstk'))
-    | Error(err) -> Error(err)
-  )
-  | EBinOp(e1, BOMinus, e2) -> (match trace1_expr e1 enstk with
-    | Ok(None) -> Error("lhs of - is not an integer")
-    | Ok(Some(e1', enstk')) -> Ok(Some(EBinOp(e1', BOMinus, e2), enstk'))
+  (* binary op with only rhs not terminal *)
+  | EBinOp(ET(c1), bop, ENT(e2)) -> (match trace1_expr e2 enstk with
+    | Ok(e2', enstk') -> Ok(ENT(EBinOp(ET(c1), bop, e2')), enstk')
     | Error(err) -> Error(err)
   )
 
-  | EBinOp(EConst(CNum(n1)), BOTimes, EConst(CNum(n2))) -> Ok(Some(EConst(CNum(n1*n2)), enstk))
-  | EBinOp(EConst(CNum(n1)), BOTimes, e2) -> (match trace1_expr e2 enstk with
-    | Ok(None) -> Error("rhs of * is not an integer")
-    | Ok(Some(e2', enstk')) -> Ok(Some(EBinOp(EConst(CNum(n1)), BOTimes, e2'), enstk'))
-    | Error(err) -> Error(err)
-  )
-  | EBinOp(e1, BOTimes, e2) -> (match trace1_expr e1 enstk with
-    | Ok(None) -> Error("lhs of * is not an integer")
-    | Ok(Some(e1', enstk')) -> Ok(Some(EBinOp(e1', BOTimes, e2), enstk'))
-    | Error(err) -> Error(err)
-  )
-  
-  | EBinOp(EConst(CBool(b1)), BOAnd, EConst(CBool(b2))) -> Ok(Some(EConst(CBool(b1 && b2)), enstk))
-  | EBinOp(EConst(CBool(b1)), BOAnd, e2) -> (match trace1_expr e2 enstk with
-    | Ok(None) -> Error("rhs of && is not an integer")
-    | Ok(Some(e2', enstk')) -> Ok(Some(EBinOp(EConst(CBool(b1)), BOAnd, e2'), enstk'))
-    | Error(err) -> Error(err)
-  )
-  | EBinOp(e1, BOAnd, e2) -> (match trace1_expr e1 enstk with
-    | Ok(None) -> Error("lhs of && is not an integer")
-    | Ok(Some(e1', enstk')) -> Ok(Some(EBinOp(e1', BOAnd, e2), enstk'))
+  (* binary op with lhs not terminal *)
+  | EBinOp(ENT(e1), bop, e2) -> (match trace1_expr e1 enstk with
+    | Ok(e1', enstk') -> Ok(ENT(EBinOp(e1', bop, e2)), enstk')
     | Error(err) -> Error(err)
   )
 
-  | EBinOp(EConst(CBool(b1)), BOOr, EConst(CBool(b2))) -> Ok(Some(EConst(CBool(b1 || b2)), enstk))
-  | EBinOp(EConst(CBool(b1)), BOOr, e2) -> (match trace1_expr e2 enstk with
-    | Ok(None) -> Error("rhs of || is not an integer")
-    | Ok(Some(e2', enstk')) -> Ok(Some(EBinOp(EConst(CBool(b1)), BOOr, e2'), enstk'))
-    | Error(err) -> Error(err)
+  (* binary op with lhs and rhs terminal*)
+  | EBinOp(ET(c1), bop, ET(c2)) -> (match (c1,bop,c2) with
+    | (CNum(n1), BOPlus, CNum(n2)) -> Ok(ET(CNum(n1+n2)), enstk)
+    | (CNum(n1), BOMinus, CNum(n2)) -> Ok(ET(CNum(n1-n2)), enstk)
+    | (CNum(n1), BOTimes, CNum(n2)) -> Ok(ET(CNum(n1*n2)), enstk)
+
+    | (CBool(b1), BOAnd, CBool(b2)) -> Ok(ET(CBool(b1 && b2)), enstk)
+    | (CBool(b1), BOOr, CBool(b2)) -> Ok(ET(CBool(b1 || b2)), enstk)
+
+    | (CNum(n1), BOLeq, CNum(n2)) -> Ok(ET(CBool(n1 <= n2)), enstk)
+    | (CNum(n1), BOEq, CNum(n2)) -> Ok(ET(CBool(n1 = n2)), enstk)
+    | (CBool(b1), BOEq, CBool(b2)) -> Ok(ET(CBool(b1 = b2)), enstk)
+
+    | (_, op, _) -> Error("Type mismatch for operator " ^ (string_of_binop op))
   )
-  | EBinOp(e1, BOOr, e2) -> (match trace1_expr e1 enstk with
-    | Ok(None) -> Error("lhs of || is not an integer")
-    | Ok(Some(e1', enstk')) -> Ok(Some(EBinOp(e1', BOOr, e2), enstk'))
+
+  (* 'not' with e not terminal*)
+  | EUnOp(UONot, ENT(e)) -> (match trace1_expr e enstk with
+    | Ok(e', enstk') -> Ok(ENT(EUnOp(UONot, e')), enstk')
     | Error(err) -> Error(err)
   )
 
-  | EUnOp(UONot, EConst(CBool(b))) -> Ok(Some(EConst(CBool(not b)), enstk))
-  | EUnOp(UONot, e) -> (match trace1_expr e enstk with
-    | Ok(None) -> Error("operand of 'not' is not an integer")
-    | Ok(Some(e', enstk')) -> Ok(Some(EUnOp(UONot, e'), enstk'))
-    | Error(err) -> Error(err)
-  )
+  (* 'not' with boolean terminal *)
+  | EUnOp(UONot, ET(CBool(b))) -> Ok(ET(CBool(not b)), enstk)
+  | EUnOp(UONot, ET(_)) -> Error("Type mismatch for 'not'")
+  ;;
 
 let rec eval_expr (max: int) (e: expr) (enstk: env list): (expr, expr*string) result =
-  if max=0 then Ok e else
-  match trace1_expr e enstk with
-  | Ok None -> Ok e
-  | Ok (Some(e', enstk')) -> eval_expr (max-1) e' enstk'
-  | Error(err) -> Error(e,err)
+  match e with
+  | ET e -> Ok(ET e)
+  | ENT e -> (
+    if max=0 then Ok (ENT e) else
+    match trace1_expr e enstk with
+    | Ok (ENT e', enstk') -> eval_expr (max-1) (ENT e') enstk'
+    | Ok (ET e', _) -> Ok(ET e')
+    | Error(err) -> Error(ENT e,err)
+  )
 
 type evalerr =
   | ProgCheckErr of progCheckError list

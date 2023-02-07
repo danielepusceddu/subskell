@@ -7,10 +7,6 @@ type typing =
   | TBool
   | TFun of typing * typing
 
-type const = 
-  | CNum of int
-  | CBool of bool
-
 type binop =
   | BOPlus
   | BOTimes
@@ -25,9 +21,15 @@ type unop =
 
 type env = ide -> expr option and
 
-expr =
-  | EConst of const
+term = 
+  | CNum of int
+  | CBool of bool
   | EFun of ide * expr
+
+  (* runtime only *)
+  | EClosure of ide * expr * env (* shouldn't need env list *)
+
+and nonterm =
   | EApp of expr * expr
   | EIf of expr * expr * expr
   | EBinOp of expr * binop * expr
@@ -37,8 +39,11 @@ expr =
 
   (* runtime only *)
   | ERet of expr
-  | EClosure of ide * expr * env (* shouldn't need list *)
-  | EThunk of expr * env (* for lazy evaluation *)
+  | EThunk of expr * env 
+  
+and expr = 
+  | ET of term
+  | ENT of nonterm(* for lazy evaluation *)
 
 type typesig = ide * typing
 

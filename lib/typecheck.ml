@@ -14,96 +14,100 @@ let is_boolop = function
   | _ -> false
 
 let rec typecheck (typenv: typenv) = function
-  | EConst(CNum _) -> Ok TInt
-
-  | EBinOp(e1, BOEq, e2) -> (
-    let (r1,r2) = (typecheck typenv e1, typecheck typenv e2)
-    in match (r1,r2) with
-    | (Ok t1, Ok t2) when t1=t2 -> Ok TBool
-    | (Ok _, Ok _) -> Error("Equality between different types")
-    | (Error err, Ok _)
-    | (Ok _, Error err) -> Error(err)
-    | (Error err1, Error err2) -> Error (err1 ^ " " ^ err2)
-  )
-
-  | EBinOp(e1, BOLeq, e2) -> (
-    let (r1,r2) = (typecheck typenv e1, typecheck typenv e2)
-    in match (r1,r2) with
-    | (Ok TInt, Ok TInt) -> Ok TBool
-    | (Ok _, Ok _) -> Error("Ordering between types different than integers")
-    | (Error err, Ok _)
-    | (Ok _, Error err) -> Error(err)
-    | (Error err1, Error err2) -> Error (err1 ^ " " ^ err2)
-  )
-
-  | EBinOp(e1, op, e2) when is_arithop op -> (
-    if typecheck typenv e1 = Ok TInt && typecheck typenv e2 = Ok TInt 
-    then Ok TInt
-    else Error ("Ill-typed operand on " ^ string_of_binop op)
-  )
-
-  | EConst(CBool _) -> Ok TBool
-
-  | EBinOp(e1, op, e2) -> (
-    if typecheck typenv e1 = Ok TBool && typecheck typenv e2 = Ok TBool 
-    then Ok TBool
-    else Error ("Ill-typed operand on " ^ string_of_binop op)
-  )
-
-  | EUnOp(UONot, e) -> (
-    if typecheck typenv e = Ok TBool
-    then Ok TBool
-    else Error ("Ill-typed operand on " ^ string_of_unop UONot)
-  )
-    
-  | EFun(x, expr) -> (match typecheck typenv expr with 
+  | ET(e) -> (match e with
+    | CNum _ -> Ok TInt
+    | CBool _ -> Ok TBool
+    | EFun(x, expr) -> (match typecheck typenv expr with 
       | Ok(t) -> (match typenv x with 
           | Some(t2) -> (Ok (TFun(t2, t)))
           | None -> Error "Unknown type of function parameter")
-      | Error(e) -> Error e)
-
-  | EApp(e1, e2) -> (
-      let funtype = typecheck typenv e1 in
-      match funtype with
-        | Ok(TFun(t1, t2)) -> (match typecheck typenv e2 with
-            | Ok(t) when t1=t -> Ok t2
-            | Ok(_) -> Error "rhs of function application has the wrong type"
-            | Error(err) -> Error(err)
-        )
-        | Ok _ -> Error "lhs of function application is not a function"
-        | Error err -> Error err
-  )
-  | EIf(e1, e2, e3) ->(match typecheck typenv e1 with
-    | Error(err) -> Error err
-    
-    | Ok(TBool) -> (match typecheck typenv e2 with
-      | Error(err) -> Error err
-      | Ok(t2) -> (match typecheck typenv e3 with
-      | Error(err) -> Error(err)
-      | Ok(t3) when t2=t3 -> Ok t3
-      | Ok(_) -> Error "If: type ambiguity"
-      )
+      | Error(e) -> Error e
     )
-    | Ok(_) -> Error "If: condition is not a boolean"
+    | EClosure(_) -> Error("EClosure should be runtime only")
   )
 
-  | ELetIn(x, e1, e2) -> (match typecheck typenv e1 with
-    | Ok(t) -> typecheck (bind typenv x (Some(t))) (EApp(EFun(x, e2), e1))
-    | Error(err) -> Error(err)
-  )
+  | ENT(e) -> (match e with
+    | EBinOp(e1, BOEq, e2) -> (
+      let (r1,r2) = (typecheck typenv e1, typecheck typenv e2)
+      in match (r1,r2) with
+      | (Ok t1, Ok t2) when t1=t2 -> Ok TBool
+      | (Ok _, Ok _) -> Error("Equality between different types")
+      | (Error err, Ok _)
+      | (Ok _, Error err) -> Error(err)
+      | (Error err1, Error err2) -> Error (err1 ^ " " ^ err2)
+    )
 
-  | EVar x -> (match typenv x with
-    | Some t -> Ok t
-    | None -> Error ("Identifier " ^ x ^ " with no type"))
-  | ERet(_) -> Error("ERet should be runtime only")
-  | EClosure(_) -> Error("EClosure should be runtime only")
-  | EThunk(_) -> Error("EThunk should be runtime only")
+    | EBinOp(e1, BOLeq, e2) -> (
+      let (r1,r2) = (typecheck typenv e1, typecheck typenv e2)
+      in match (r1,r2) with
+      | (Ok TInt, Ok TInt) -> Ok TBool
+      | (Ok _, Ok _) -> Error("Ordering between types different than integers")
+      | (Error err, Ok _)
+      | (Ok _, Error err) -> Error(err)
+      | (Error err1, Error err2) -> Error (err1 ^ " " ^ err2)
+    )
+  
+    | EBinOp(e1, op, e2) when is_arithop op -> (
+      if typecheck typenv e1 = Ok TInt && typecheck typenv e2 = Ok TInt 
+      then Ok TInt
+      else Error ("Ill-typed operand on " ^ string_of_binop op)
+    )
+  
+    | EBinOp(e1, op, e2) -> (
+      if typecheck typenv e1 = Ok TBool && typecheck typenv e2 = Ok TBool 
+      then Ok TBool
+      else Error ("Ill-typed operand on " ^ string_of_binop op)
+    )
+  
+    | EUnOp(UONot, e) -> (
+      if typecheck typenv e = Ok TBool
+      then Ok TBool
+      else Error ("Ill-typed operand on " ^ string_of_unop UONot)
+    )
+  
+    | EApp(e1, e2) -> (
+        let funtype = typecheck typenv e1 in
+        match funtype with
+          | Ok(TFun(t1, t2)) -> (match typecheck typenv e2 with
+              | Ok(t) when t1=t -> Ok t2
+              | Ok(_) -> Error "rhs of function application has the wrong type"
+              | Error(err) -> Error(err)
+          )
+          | Ok _ -> Error "lhs of function application is not a function"
+          | Error err -> Error err
+    )
+    | EIf(e1, e2, e3) ->(match typecheck typenv e1 with
+      | Error(err) -> Error err
+      
+      | Ok(TBool) -> (match typecheck typenv e2 with
+        | Error(err) -> Error err
+        | Ok(t2) -> (match typecheck typenv e3 with
+        | Error(err) -> Error(err)
+        | Ok(t3) when t2=t3 -> Ok t3
+        | Ok(_) -> Error "If: type ambiguity"
+        )
+      )
+      | Ok(_) -> Error "If: condition is not a boolean"
+    )
+  
+    | ELetIn(x, e1, e2) -> (match typecheck typenv e1 with
+      | Ok(t) -> typecheck (bind typenv x (Some(t))) (ENT(EApp(ET(EFun(x, e2)), e1)))
+      | Error(err) -> Error(err)
+    )
+  
+    | EVar x -> (match typenv x with
+      | Some t -> Ok t
+      | None -> Error ("Identifier " ^ x ^ " with no type"))
+    | ERet(_) -> Error("ERet should be runtime only")
+    | EThunk(_) -> Error("EThunk should be runtime only")
+  
+  )
 ;;
 
 type sigError = DifferentType of typing * typing | TypingError of string
 let rec respects_sig (definition: expr) (tsig: typing) (tenv: typenv) =
   match (definition, tsig) with
-    | (EFun(x, expr), TFun(t1,t2)) ->
+    | (ET(EFun(x, expr)), TFun(t1,t2)) ->
         (* assign to each subsequent binder the leftmost terminal type of the signature *)
         let tenv' y = if x=y then Some t1 else tenv y in
         respects_sig expr t2 tenv'
