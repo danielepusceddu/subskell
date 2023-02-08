@@ -1,0 +1,4 @@
+(executable
+ (public_name subskell)
+ (name main)
+ (libraries subskellLib))
