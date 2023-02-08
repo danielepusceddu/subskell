@@ -19,6 +19,8 @@ open Ast
 %token TRUE
 %token FALSE
 %token LESSEQ
+%token INTEQ
+%token BOOLEQ
 %token EQUAL
 %token LET
 %token IN
@@ -55,7 +57,7 @@ open Ast
 For example, "not 1 = 2 * 3" is parsed as "not (1 = (2 * 3))" *)
 %left AND OR
 %nonassoc NOT
-%left EQUAL LESSEQ
+%left INTEQ BOOLEQ EQUAL LESSEQ
 %left PLUS MINUS
 %left PRODUCT
 
@@ -93,7 +95,6 @@ expr:
     | LET x = IDE EQUAL e1 = expr IN e2 = expr { ENT(ELetIn(x,e1,e2)) }
 
     | c = const { ET(c) }
-    | e1 = expr; EQUAL; e2 = expr; { ENT(EBinOp(e1, BOEq, e2)) }
     | e1 = expr; op = binop; e2 = expr; { ENT (EBinOp(e1, op, e2)) }
     | o = unop; e = expr; { ENT (EUnOp(o, e)) }
     | x = variable { ENT (EVar(x)) }
@@ -122,5 +123,7 @@ variable:
     | MINUS { BOMinus }
     | AND { BOAnd }
     | OR { BOOr }
+    | INTEQ { BOIEq}
+    | BOOLEQ { BOBEq }
     | LESSEQ { BOLeq }
 

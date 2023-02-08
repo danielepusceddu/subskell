@@ -69,8 +69,8 @@ let rec trace1_expr (ex: nonterm) (enstk: env list) : (expr*env list, string) re
     | (CBool(b1), BOOr, CBool(b2)) -> Ok(ET(CBool(b1 || b2)), enstk)
 
     | (CNum(n1), BOLeq, CNum(n2)) -> Ok(ET(CBool(n1 <= n2)), enstk)
-    | (CNum(n1), BOEq, CNum(n2)) -> Ok(ET(CBool(n1 = n2)), enstk)
-    | (CBool(b1), BOEq, CBool(b2)) -> Ok(ET(CBool(b1 = b2)), enstk)
+    | (CNum(n1), BOIEq, CNum(n2)) -> Ok(ET(CBool(n1 = n2)), enstk)
+    | (CBool(b1), BOBEq, CBool(b2)) -> Ok(ET(CBool(b1 = b2)), enstk)
 
     | (_, op, _) -> Error("Type mismatch for operator " ^ (string_of_binop op))
   )

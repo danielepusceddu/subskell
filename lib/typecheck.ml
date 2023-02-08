@@ -27,11 +27,21 @@ let rec typecheck (typenv: typenv) = function
   )
 
   | ENT(e) -> (match e with
-    | EBinOp(e1, BOEq, e2) -> (
+    | EBinOp(e1, BOIEq, e2) -> (
       let (r1,r2) = (typecheck typenv e1, typecheck typenv e2)
       in match (r1,r2) with
-      | (Ok t1, Ok t2) when t1=t2 -> Ok TBool
-      | (Ok _, Ok _) -> Error("Equality between different types")
+      | (Ok TInt, Ok TInt) -> Ok TBool
+      | (Ok _, Ok _) -> Error("Type mismatch for integer equality")
+      | (Error err, Ok _)
+      | (Ok _, Error err) -> Error(err)
+      | (Error err1, Error err2) -> Error (err1 ^ " " ^ err2)
+    )
+
+    | EBinOp(e1, BOBEq, e2) -> (
+      let (r1,r2) = (typecheck typenv e1, typecheck typenv e2)
+      in match (r1,r2) with
+      | (Ok TBool, Ok TBool) -> Ok TBool
+      | (Ok _, Ok _) -> Error("Type mismatch for boolean equality")
       | (Error err, Ok _)
       | (Ok _, Error err) -> Error(err)
       | (Error err1, Error err2) -> Error (err1 ^ " " ^ err2)
