@@ -12,3 +12,8 @@ let string_of_binop = function
 
 let string_of_unop = function
   | UONot -> "not"
+
+let string_of_name = function
+  | NBop(op) -> string_of_binop op
+  | NUop(op) -> string_of_unop op
+  | NVar x -> x

@@ -11,9 +11,9 @@ let bind f x e x' = if x'=x then e else f x'
 
 let rec trace1_expr (ex: nonterm) (enstk: env list) : (expr*env list, string) result = match ex with
   | EApp(ET(EClosure(ide, expr1, saved)), expr2) ->
-      Ok(ENT(ERet expr1), (bind saved ide (Some(ENT(EThunk(expr2, List.hd enstk))))::enstk))
+      Ok(ENT(ERet expr1), (bind saved (NVar ide) (Some(ENT(EThunk(expr2, List.hd enstk))))::enstk))
   | EApp(ET(EFun(ide, expr1)), expr2) ->
-      Ok (ENT(ERet expr1), (bind (List.hd enstk) ide (Some(ENT(EThunk(expr2, List.hd enstk)))))::enstk)
+      Ok (ENT(ERet expr1), (bind (List.hd enstk) (NVar ide) (Some(ENT(EThunk(expr2, List.hd enstk)))))::enstk)
   | EApp(ET(_), _) -> Error("lhs of apply not a function")
   | EApp(ENT(expr1), expr2) -> (
       match trace1_expr expr1 enstk with
@@ -41,26 +41,26 @@ let rec trace1_expr (ex: nonterm) (enstk: env list) : (expr*env list, string) re
 
   | EThunk(exp, saved) -> Ok((ENT(ERet(exp)), saved::enstk))
 
-  | EVar(ide) -> (match (List.hd enstk) ide with
+  | EName(ide) -> (match (List.hd enstk) ide with
     | Some(e) -> Ok(e, enstk)
     | None -> Error("variable outside of scope"))
 
   | ELetIn(ide, e1, e2) -> Ok(ENT(EApp(ET(EFun(ide, e2)), e1)), enstk)
 
   (* binary op with only rhs not terminal *)
-  | EBinOp(ET(c1), bop, ENT(e2)) -> (match trace1_expr e2 enstk with
-    | Ok(e2', enstk') -> Ok(ENT(EBinOp(ET(c1), bop, e2')), enstk')
+  | EBPrim(ET(c1), bop, ENT(e2)) -> (match trace1_expr e2 enstk with
+    | Ok(e2', enstk') -> Ok(ENT(EBPrim(ET(c1), bop, e2')), enstk')
     | Error(err) -> Error(err)
   )
 
   (* binary op with lhs not terminal *)
-  | EBinOp(ENT(e1), bop, e2) -> (match trace1_expr e1 enstk with
-    | Ok(e1', enstk') -> Ok(ENT(EBinOp(e1', bop, e2)), enstk')
+  | EBPrim(ENT(e1), bop, e2) -> (match trace1_expr e1 enstk with
+    | Ok(e1', enstk') -> Ok(ENT(EBPrim(e1', bop, e2)), enstk')
     | Error(err) -> Error(err)
   )
 
   (* binary op with lhs and rhs terminal*)
-  | EBinOp(ET(c1), bop, ET(c2)) -> (match (c1,bop,c2) with
+  | EBPrim(ET(c1), bop, ET(c2)) -> (match (c1,bop,c2) with
     | (CNum(n1), BOPlus, CNum(n2)) -> Ok(ET(CNum(n1+n2)), enstk)
     | (CNum(n1), BOMinus, CNum(n2)) -> Ok(ET(CNum(n1-n2)), enstk)
     | (CNum(n1), BOTimes, CNum(n2)) -> Ok(ET(CNum(n1*n2)), enstk)
@@ -76,14 +76,14 @@ let rec trace1_expr (ex: nonterm) (enstk: env list) : (expr*env list, string) re
   )
 
   (* 'not' with e not terminal*)
-  | EUnOp(UONot, ENT(e)) -> (match trace1_expr e enstk with
-    | Ok(e', enstk') -> Ok(ENT(EUnOp(UONot, e')), enstk')
+  | EUPrim(UONot, ENT(e)) -> (match trace1_expr e enstk with
+    | Ok(e', enstk') -> Ok(ENT(EUPrim(UONot, e')), enstk')
     | Error(err) -> Error(err)
   )
 
   (* 'not' with boolean terminal *)
-  | EUnOp(UONot, ET(CBool(b))) -> Ok(ET(CBool(not b)), enstk)
-  | EUnOp(UONot, ET(_)) -> Error("Type mismatch for 'not'")
+  | EUPrim(UONot, ET(CBool(b))) -> Ok(ET(CBool(not b)), enstk)
+  | EUPrim(UONot, ET(_)) -> Error("Type mismatch for 'not'")
   ;;
 
 let rec eval_expr (max: int) (e: expr) (enstk: env list): (expr, expr*string) result =
@@ -106,7 +106,7 @@ let eval_prog (max: int) ((tl, dl, ex): program) : (expr, evalerr) result =
     | Error(errlist) -> Error(ProgCheckErr(errlist))
     | Ok(_) -> (
       let outer_env = 
-        List.fold_left (fun env (ide,expr) -> bind env ide (Some expr)) bottom dl
+        List.fold_left (fun env (ide,expr) -> bind env (NVar ide) (Some expr)) static_env dl
       in match eval_expr max ex [outer_env] with
         | Ok(e) -> Ok e
         | Error(e,s) -> Error(RuntimeErr(e, s))

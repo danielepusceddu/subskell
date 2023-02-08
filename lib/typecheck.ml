@@ -1,7 +1,25 @@
 open Ast
 open Prettyprint
 
-type typenv = (ide -> typing option)
+type typenv = (name -> typing option)
+
+let static_tenv : typenv = function
+  | NBop(BOPlus)
+  | NBop(BOMinus)
+  | NBop(BOTimes) -> Some(TFun(TInt, TFun(TInt, TInt)))
+
+  | NBop(BOAnd)
+  | NBop(BOOr) -> Some(TFun(TBool, TFun(TBool, TBool)))
+
+  | NBop(BOBEq) -> Some(TFun(TBool, TFun(TBool, TBool)))
+
+  | NBop(BOLeq)
+  | NBop(BOIEq) -> Some(TFun(TInt, TFun(TInt, TBool)))
+
+  | NUop(UONot) -> Some(TFun(TBool, TBool))
+
+  | NVar(_) -> None
+
 
 let bind f x v = fun y -> if x=y then v else f y
 
@@ -18,7 +36,7 @@ let rec typecheck (typenv: typenv) = function
     | CNum _ -> Ok TInt
     | CBool _ -> Ok TBool
     | EFun(x, expr) -> (match typecheck typenv expr with 
-      | Ok(t) -> (match typenv x with 
+      | Ok(t) -> (match typenv (NVar x) with 
           | Some(t2) -> (Ok (TFun(t2, t)))
           | None -> Error "Unknown type of function parameter")
       | Error(e) -> Error e
@@ -27,7 +45,7 @@ let rec typecheck (typenv: typenv) = function
   )
 
   | ENT(e) -> (match e with
-    | EBinOp(e1, BOIEq, e2) -> (
+    | EBPrim(e1, BOIEq, e2) -> (
       let (r1,r2) = (typecheck typenv e1, typecheck typenv e2)
       in match (r1,r2) with
       | (Ok TInt, Ok TInt) -> Ok TBool
@@ -37,17 +55,17 @@ let rec typecheck (typenv: typenv) = function
       | (Error err1, Error err2) -> Error (err1 ^ " " ^ err2)
     )
 
-    | EBinOp(e1, BOBEq, e2) -> (
+    | EBPrim(e1, BOBEq, e2) -> (
       let (r1,r2) = (typecheck typenv e1, typecheck typenv e2)
       in match (r1,r2) with
-      | (Ok TBool, Ok TBool) -> Ok TBool
-      | (Ok _, Ok _) -> Error("Type mismatch for boolean equality")
+      | (Ok t1, Ok t2) when t1=t2 -> Ok TBool
+      | (Ok _, Ok _) -> Error("Equality between different types")
       | (Error err, Ok _)
       | (Ok _, Error err) -> Error(err)
       | (Error err1, Error err2) -> Error (err1 ^ " " ^ err2)
     )
 
-    | EBinOp(e1, BOLeq, e2) -> (
+    | EBPrim(e1, BOLeq, e2) -> (
       let (r1,r2) = (typecheck typenv e1, typecheck typenv e2)
       in match (r1,r2) with
       | (Ok TInt, Ok TInt) -> Ok TBool
@@ -57,19 +75,19 @@ let rec typecheck (typenv: typenv) = function
       | (Error err1, Error err2) -> Error (err1 ^ " " ^ err2)
     )
   
-    | EBinOp(e1, op, e2) when is_arithop op -> (
+    | EBPrim(e1, op, e2) when is_arithop op -> (
       if typecheck typenv e1 = Ok TInt && typecheck typenv e2 = Ok TInt 
       then Ok TInt
       else Error ("Ill-typed operand on " ^ string_of_binop op)
     )
   
-    | EBinOp(e1, op, e2) -> (
+    | EBPrim(e1, op, e2) -> (
       if typecheck typenv e1 = Ok TBool && typecheck typenv e2 = Ok TBool 
       then Ok TBool
       else Error ("Ill-typed operand on " ^ string_of_binop op)
     )
   
-    | EUnOp(UONot, e) -> (
+    | EUPrim(UONot, e) -> (
       if typecheck typenv e = Ok TBool
       then Ok TBool
       else Error ("Ill-typed operand on " ^ string_of_unop UONot)
@@ -101,16 +119,16 @@ let rec typecheck (typenv: typenv) = function
     )
   
     | ELetIn(x, e1, e2) -> (match typecheck typenv e1 with
-      | Ok(t) -> typecheck (bind typenv x (Some(t))) (ENT(EApp(ET(EFun(x, e2)), e1)))
+      | Ok(t) -> typecheck (bind typenv (NVar x) (Some(t))) (ENT(EApp(ET(EFun(x, e2)), e1)))
       | Error(err) -> Error(err)
     )
   
-    | EVar x -> (match typenv x with
+    | EName x -> (match typenv x with
       | Some t -> Ok t
-      | None -> Error ("Identifier " ^ x ^ " with no type"))
+      | None -> Error ("Identifier " ^ (string_of_name x) ^ " with no type"))
+
     | ERet(_) -> Error("ERet should be runtime only")
     | EThunk(_) -> Error("EThunk should be runtime only")
-  
   )
 ;;
 
@@ -119,7 +137,7 @@ let rec respects_sig (definition: expr) (tsig: typing) (tenv: typenv) =
   match (definition, tsig) with
     | (ET(EFun(x, expr)), TFun(t1,t2)) ->
         (* assign to each subsequent binder the leftmost terminal type of the signature *)
-        let tenv' y = if x=y then Some t1 else tenv y in
+        let tenv' y = if (NVar x)=y then Some t1 else tenv y in
         respects_sig expr t2 tenv'
 
     | (def, typ) -> (match typecheck tenv def with
@@ -128,8 +146,8 @@ let rec respects_sig (definition: expr) (tsig: typing) (tenv: typenv) =
       )
 
 let rec typenv_of_typesigs = function
-  | [] -> tbottom
-  | (ide,ty)::t -> bind (typenv_of_typesigs t) ide (Some ty)
+  | [] -> static_tenv
+  | (ide,ty)::t -> bind (typenv_of_typesigs t) (NVar ide) (Some ty)
 
 type progCheckError = 
   | NoTypeSignature of ide
@@ -139,7 +157,7 @@ type progCheckError =
 let typecheck_prog ((ts,ds,main): program) : (typing, progCheckError list) result =
   let (tenv: typenv) = typenv_of_typesigs ts in
   let tsigerrlist = (List.fold_left
-    (fun l (ide,def) -> match tenv ide with 
+    (fun l (ide,def) -> match tenv (NVar ide) with 
       | None -> (NoTypeSignature ide)::l
       | Some t -> (match respects_sig def t tenv with
         | Ok() -> l

@@ -95,9 +95,11 @@ expr:
     | LET x = IDE EQUAL e1 = expr IN e2 = expr { ENT(ELetIn(x,e1,e2)) }
 
     | c = const { ET(c) }
-    | e1 = expr; op = binop; e2 = expr; { ENT (EBinOp(e1, op, e2)) }
-    | o = unop; e = expr; { ENT (EUnOp(o, e)) }
-    | x = variable { ENT (EVar(x)) }
+    | e1 = expr; op = binop; e2 = expr; { ENT (EBPrim(e1, op, e2)) }
+    | o = unop; e = expr; { ENT (EUPrim(o, e)) }
+    | LPAREN op = binop RPAREN { ENT (EName(NBop op))}
+    | LPAREN op = unop RPAREN { ENT (EName(NUop op))}
+    | x = variable { ENT (EName (NVar x)) }
     | LPAREN e=expr RPAREN { e }
 
 const:

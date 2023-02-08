@@ -20,7 +20,12 @@ type binop =
 type unop =
   | UONot
 
-type env = ide -> expr option and
+type name =
+  | NVar of ide
+  | NBop of binop
+  | NUop of unop
+
+type env = name -> expr option and
 
 term = 
   | CNum of int
@@ -33,11 +38,11 @@ term =
 and nonterm =
   | EApp of expr * expr
   | EIf of expr * expr * expr
-  | EBinOp of expr * binop * expr
-  | EUnOp of unop * expr
-  | EVar of ide
+  | EName of name
   | ELetIn of ide * expr * expr
-
+  | EBPrim of expr * binop * expr
+  | EUPrim of unop * expr
+  
   (* runtime only *)
   | ERet of expr
   | EThunk of expr * env 
@@ -59,7 +64,14 @@ type program = typesig list * declaration list * expr
 type typenv = ide -> typing option
 type envstack = env list
 let tbottom _ = None
-let bottom _ = None
+
+let static_env : env = function
+  | NBop(op) ->  Some(ET(
+      EFun("a", (ET(EFun("b", 
+      ENT(EBPrim(ENT(EName(NVar "a")), op, ENT(EName(NVar "b")))))
+      )))))
+  | NUop(op) ->  Some(ET(EFun("a", ENT(EUPrim(op, ENT(EName(NVar "a")))))))
+  | NVar(_) -> None
 
 let explode_typesig_or_decl_list (tdl: typesig_or_decl list) : (typesig list * declaration list) =
   let rec helper tdl tl dl = 
