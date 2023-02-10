@@ -40,10 +40,10 @@ and nonterm =
   | EIf of expr * expr * expr
   | EName of name
   | ELetIn of ide * expr * expr
-  | EBPrim of expr * binop * expr
-  | EUPrim of unop * expr
   
   (* runtime only *)
+  | EBPrim of expr * binop * expr
+  | EUPrim of unop * expr
   | ERet of expr
   | EThunk of expr * env 
   
