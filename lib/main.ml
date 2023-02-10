@@ -32,7 +32,7 @@ let rec trace1_expr (ex: nonterm) (enstk: env list) : (expr*env list, string) re
   )
 
   | ERet(ET(EFun(x,e))) ->
-      Ok(ET(EClosure(x,e, List.hd enstk)), enstk)
+      Ok(ET(EClosure(x,e, List.hd enstk)), List.tl enstk)
   | ERet(ET(e)) -> Ok(ET(e), List.tl enstk)
   | ERet(ENT(e)) -> (match trace1_expr e enstk with
     | Ok(e', enstk') -> Ok(ENT(ERet(e')), enstk')
