@@ -13,6 +13,7 @@ open Ast
 %token OR
 %token NOT
 %token <string> IDE
+%token <int> TYPEVAR
 %token IF
 %token THEN
 %token ELSE
@@ -75,6 +76,7 @@ typing:
     | INT { TInt }
     | BOOL { TBool }
     | t1 = typing TO t2 = typing { TFun(t1,t2) }
+    | tvar = TYPEVAR { TVar(tvar) }
     | LPAREN t = typing RPAREN { t }
 
 typesig:

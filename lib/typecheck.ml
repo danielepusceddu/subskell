@@ -1,5 +1,5 @@
 open Ast
-open Prettyprint
+open Help
 
 type typenv = (name -> typing option)
 
@@ -20,155 +20,162 @@ let static_tenv : typenv = function
 
   | NVar(_) -> None
 
-
 let bind f x v = fun y -> if x=y then v else f y
 
-let is_arithop = function
-    BOPlus | BOTimes | BOMinus -> true
-  | _ -> false
+type constr = typing * typing;;
+module ConstrSet = Set.Make(struct type t = constr let compare = compare end);;
+let add_mul = List.fold_right ConstrSet.add;;
+let empty = ConstrSet.empty;;
+let union_mul = List.fold_right ConstrSet.union;;
 
-let is_boolop = function
-    BOAnd | BOOr -> true
-  | _ -> false
-
-let rec typecheck (typenv: typenv) = function
+let rec getconstrs (typenv: typenv) (max_tvar: int) = function
   | ET(e) -> (match e with
-    | CNum _ -> Ok TInt
-    | CBool _ -> Ok TBool
-    | EFun(x, expr) -> (match typecheck typenv expr with 
-      | Ok(t) -> (match typenv (NVar x) with 
-          | Some(t2) -> (Ok (TFun(t2, t)))
-          | None -> Error "Unknown type of function parameter")
-      | Error(e) -> Error e
-    )
-    | EClosure(_) -> Error("EClosure should be runtime only")
+    | CNum _ -> (TInt, max_tvar, empty)
+    | CBool _ -> (TBool, max_tvar, empty)
+    | EFun(x,e) -> 
+      let fresh_i = max_tvar+1 in
+      let fresh = TVar fresh_i in
+      let newenv = bind typenv (NVar x) (Some fresh) in
+      let (t2, max, c) = getconstrs newenv fresh_i e in
+      (TFun(fresh, t2), max, c)
+
+    | EClosure(_,_,_) -> failwith "EClosure should be runtime only"
   )
 
   | ENT(e) -> (match e with
-    | EBPrim(e1, BOIEq, e2) -> (
-      let (r1,r2) = (typecheck typenv e1, typecheck typenv e2)
-      in match (r1,r2) with
-      | (Ok TInt, Ok TInt) -> Ok TBool
-      | (Ok _, Ok _) -> Error("Type mismatch for integer equality")
-      | (Error err, Ok _)
-      | (Ok _, Error err) -> Error(err)
-      | (Error err1, Error err2) -> Error (err1 ^ " " ^ err2)
+    | EName(x) -> (match typenv x with
+      | Some(t) -> (t, max_tvar, empty)
+      | None -> failwith "name without type"
     )
 
-    | EBPrim(e1, BOBEq, e2) -> (
-      let (r1,r2) = (typecheck typenv e1, typecheck typenv e2)
-      in match (r1,r2) with
-      | (Ok t1, Ok t2) when t1=t2 -> Ok TBool
-      | (Ok _, Ok _) -> Error("Equality between different types")
-      | (Error err, Ok _)
-      | (Ok _, Error err) -> Error(err)
-      | (Error err1, Error err2) -> Error (err1 ^ " " ^ err2)
-    )
+    | EIf(e1, e2, e3) -> 
+      let fresh_i = 1+max_tvar in
+      let fresh = TVar fresh_i in
+      let (t1,max,c1) = getconstrs typenv fresh_i e1 in
+      let (t2,max,c2) = getconstrs typenv max e2 in 
+      let (t3,max,c3) = getconstrs typenv max e3 in
+      let c = add_mul [(t1, TBool); (fresh, t2); (fresh, t3)] empty in
+      let united = union_mul [c1; c2; c3] c in
+      (fresh, max, united)
 
-    | EBPrim(e1, BOLeq, e2) -> (
-      let (r1,r2) = (typecheck typenv e1, typecheck typenv e2)
-      in match (r1,r2) with
-      | (Ok TInt, Ok TInt) -> Ok TBool
-      | (Ok _, Ok _) -> Error("Ordering between types different than integers")
-      | (Error err, Ok _)
-      | (Ok _, Error err) -> Error(err)
-      | (Error err1, Error err2) -> Error (err1 ^ " " ^ err2)
-    )
-  
-    | EBPrim(e1, op, e2) when is_arithop op -> (
-      if typecheck typenv e1 = Ok TInt && typecheck typenv e2 = Ok TInt 
-      then Ok TInt
-      else Error ("Ill-typed operand on " ^ string_of_binop op)
-    )
-  
-    | EBPrim(e1, op, e2) -> (
-      if typecheck typenv e1 = Ok TBool && typecheck typenv e2 = Ok TBool 
-      then Ok TBool
-      else Error ("Ill-typed operand on " ^ string_of_binop op)
-    )
-  
-    | EUPrim(UONot, e) -> (
-      if typecheck typenv e = Ok TBool
-      then Ok TBool
-      else Error ("Ill-typed operand on " ^ string_of_unop UONot)
-    )
-  
-    | EApp(e1, e2) -> (
-        let funtype = typecheck typenv e1 in
-        match funtype with
-          | Ok(TFun(t1, t2)) -> (match typecheck typenv e2 with
-              | Ok(t) when t1=t -> Ok t2
-              | Ok(_) -> Error "rhs of function application has the wrong type"
-              | Error(err) -> Error(err)
-          )
-          | Ok _ -> Error "lhs of function application is not a function"
-          | Error err -> Error err
-    )
-    | EIf(e1, e2, e3) ->(match typecheck typenv e1 with
-      | Error(err) -> Error err
-      
-      | Ok(TBool) -> (match typecheck typenv e2 with
-        | Error(err) -> Error err
-        | Ok(t2) -> (match typecheck typenv e3 with
-        | Error(err) -> Error(err)
-        | Ok(t3) when t2=t3 -> Ok t3
-        | Ok(_) -> Error "If: type ambiguity"
-        )
-      )
-      | Ok(_) -> Error "If: condition is not a boolean"
-    )
-  
-    | ELetIn(x, e1, e2) -> (match typecheck typenv e1 with
-      | Ok(t) -> typecheck (bind typenv (NVar x) (Some(t))) (ENT(EApp(ET(EFun(x, e2)), e1)))
-      | Error(err) -> Error(err)
-    )
-  
-    | EName x -> (match typenv x with
-      | Some t -> Ok t
-      | None -> Error ("Identifier " ^ (string_of_name x) ^ " with no type"))
+    | EApp(e1, e2) -> 
+      let fresh_i = 1+max_tvar in 
+      let fresh = TVar fresh_i in
+      let (t1,max,c1) = getconstrs typenv fresh_i e1 in
+      let (t2,max,c2) = getconstrs typenv max e2 in 
+      let c = ConstrSet.add ((t1, TFun(t2, fresh))) empty in
+      let united = union_mul [c1;c2] c in
+      (fresh, max, united)
 
-    | ERet(_) -> Error("ERet should be runtime only")
-    | EThunk(_) -> Error("EThunk should be runtime only")
+    | ELetIn(x,e1,e2) -> (* modified to allow recursion *)
+      let fresh_i = 1+max_tvar in 
+      let fresh = TVar fresh_i in
+      let typenv' = bind typenv (NVar x) (Some fresh) in
+      let (t1,max,c1) = getconstrs typenv' fresh_i e1 in
+      let typenv' = bind typenv (NVar x) (Some t1) in
+      let (t2,max,c2) = getconstrs typenv' max e2 in
+      let united = ConstrSet.union c1 c2 in
+      (t2,max,united)
+
+    | ERet(_)
+    | EThunk(_,_)
+    | EUPrim(_,_)
+    | EBPrim(_,_,_) -> failwith "Runtime only"
   )
 ;;
 
+type tsubst = int * typing
+let rec dotsubst ((tvar,newt):tsubst) (t:typing) =
+  match (tvar, newt, t) with
+  | (_,_,TInt) -> TInt
+  | (_,_,TBool) -> TBool
+  | (x,t',TVar y) when x=y -> t'
+  | (_,_,TVar y) -> TVar y
+  | (x,t',TFun(t1,t2)) -> TFun(dotsubst (x, t') t1, dotsubst (x, t') t2)
+let dotsubsts = List.fold_right dotsubst;;
+
+let docsubst (s: tsubst) ((t1,t2): constr) =
+  (dotsubst s t1, dotsubst s t2)
+let docsubsts = List.fold_right docsubst;;
+
+let is_unifying (s: tsubst) ((t1,t2): constr) =
+  (dotsubst s t1) = (dotsubst s t2)
+
+let rec toccurs (x: int) (t: typing) : bool = match t with
+  | TVar y when x=y -> true
+  | TVar _
+  | TBool
+  | TInt -> false
+  | TFun(t1,t2) -> (toccurs x t1) || (toccurs x t2)
+(*If t1 = i1 -> o1 and t2 = i2 -> o2, where i1, i2, o1, and o2 are types, then unify(i1 = i2, o1 = o2, C')*)
+let unify (constrset: ConstrSet.t) : tsubst list = 
+  let rec helper = function
+    | [] -> []
+    | (TInt, TInt)::t
+    | (TBool, TBool)::t -> helper t
+    | (TVar x, TVar y)::t when x=y -> helper t
+    | (ty, TVar x)::t when (not (toccurs x ty)) ->
+        let s = (x,ty) in  s::(helper (List.map (docsubst s) t))
+    | (TVar x, ty)::t when (not (toccurs x ty)) ->
+        let s = (x,ty) in  s::(helper (List.map (docsubst s) t))
+    | (TFun(i1,o1),TFun(i2,o2))::t -> helper((i1,i2)::(o1,o2)::t)
+    | _ -> failwith "No unification possible"
+in helper (ConstrSet.to_seq constrset |> List.of_seq)
+
+let tinfer_expr (startenv: typenv) (e: expr) = 
+  let (t,_,constrs) = getconstrs startenv (-1) e in
+  let substs = unify constrs in
+  dotsubsts substs t
+
+(*Input: types such as 'hello -> 'wow -> 'hello
+  Output: 'a -> 'b -> 'a *)
+let norm_vars t = 
+  let rec helper (next:int) m = (function
+    | TInt -> (TInt, next, m)
+    | TBool -> (TBool, next, m)
+    | TVar x -> (match IntMap.find_opt x m with
+      | Some y -> (TVar y, next, m)
+      | None -> (TVar next, next+1, IntMap.add x next m))
+    | TFun(t1,t2) -> 
+      let (t1', next', m') = helper next m t1 in
+      let (t2', next'', m'') = helper next' m' t2 in
+      (TFun(t1',t2'), next'', m'')
+  ) 
+  in let (t',_,_) = helper 0 IntMap.empty t
+  in t'
+  
+let types_equal t1 t2 = (norm_vars t1) = (norm_vars t2)
+
 type sigError = DifferentType of typing * typing | TypingError of string
-let rec respects_sig (definition: expr) (tsig: typing) (tenv: typenv) =
-  match (definition, tsig) with
-    | (ET(EFun(x, expr)), TFun(t1,t2)) ->
-        (* assign to each subsequent binder the leftmost terminal type of the signature *)
-        let tenv' y = if (NVar x)=y then Some t1 else tenv y in
-        respects_sig expr t2 tenv'
-
-    | (def, typ) -> (match typecheck tenv def with
-        | Ok(t) -> if t = typ then Ok () else Error(DifferentType (typ,t))
-        | Error(err) -> Error(TypingError err)
-      )
-
-let rec typenv_of_typesigs = function
-  | [] -> static_tenv
-  | (ide,ty)::t -> bind (typenv_of_typesigs t) (NVar ide) (Some ty)
+let respects_sig (def: expr) (tsig: typing) (tenv: typenv) =
+  let inferred = tinfer_expr tenv def in
+  types_equal inferred tsig
 
 type progCheckError = 
   | NoTypeSignature of ide
   | SigError of ide * sigError
   | TypecheckError of string
 
-let typecheck_prog ((ts,ds,main): program) : (typing, progCheckError list) result =
-  let (tenv: typenv) = typenv_of_typesigs ts in
-  let tsigerrlist = (List.fold_left
-    (fun l (ide,def) -> match tenv (NVar ide) with 
-      | None -> (NoTypeSignature ide)::l
-      | Some t -> (match respects_sig def t tenv with
-        | Ok() -> l
-        | Error(err) -> (SigError(ide, err))::l
-      )
-    )
-    []
-    ds) in
-  let typing = typecheck tenv main in
-  match (tsigerrlist,typing) with
-    | ([],Ok(t)) -> Ok(t)
-    | (l, Ok(_)) -> Error l
-    | (l, Error(err)) -> Error((TypecheckError(err))::l)
+let rec get_typenv (l: (ide*expr*(typing option)) list) : (typenv,ide*typing*typing) result =
+  match l with
+  | [] -> Ok static_tenv
+  | (ide,e,Some(tsig))::t -> (match get_typenv t with
+    | Ok(tenv) when respects_sig e tsig tenv -> Ok(bind tenv (NVar ide) (Some tsig))
+    | Ok(tenv) -> Error((ide, tsig, tinfer_expr tenv e))
+    | Error(_,_,_) as err -> err
+  )
+  | (ide,e,None)::t -> (match get_typenv t with 
+    | Ok(tenv) -> Ok(bind tenv (NVar ide) (Some (tinfer_expr tenv e)))
+    | Error(_,_,_) as err -> err
+  )
+
+let typecheck_prog ((ts,ds,main): program) =
+  let zipped = List.map
+  (fun (ide,e) -> 
+    let tsig = List.find_map (fun (ide2,t) -> if ide=ide2 then Some t else None) ts
+    in (ide, e, tsig))
+  ds in let zipped = List.rev zipped
+  in match get_typenv zipped with
+    | Ok(tenv) -> Ok(tinfer_expr tenv main, tenv)
+    | Error(_,_,_) as err -> err
 ;;

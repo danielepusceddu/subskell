@@ -6,6 +6,7 @@ type typing =
   | TInt
   | TBool
   | TFun of typing * typing
+  | TVar of int
 
 type binop =
   | BOPlus

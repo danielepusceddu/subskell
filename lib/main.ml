@@ -100,13 +100,13 @@ let rec eval_expr (max: int) (e: expr) (enstk: env list): (expr, expr*string) re
   )
 
 type evalerr =
-  | ProgCheckErr of progCheckError list
+  | ProgCheckErr of string * typing * typing
   | RuntimeErr of expr * string
 
 let eval_prog (max: int) ((tl, dl, ex): program) : (expr, evalerr) result =
   match typecheck_prog (tl,dl,ex) with
-    | Error(errlist) -> Error(ProgCheckErr(errlist))
-    | Ok(_) -> (
+    | Error(ide,t1,t2) -> Error(ProgCheckErr(ide,t1,t2))
+    | Ok(_,_) -> (
       let outer_env = 
         List.fold_left (fun env (ide,expr) -> bind env (NVar ide) (Some expr)) static_env dl
       in match eval_expr max ex [outer_env] with
