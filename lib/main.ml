@@ -45,7 +45,9 @@ let rec trace1_expr (ex: nonterm) (enstk: env list) : (expr*env list, string) re
     | Some(e) -> Ok(e, enstk)
     | None -> Error("variable outside of scope"))
 
-  | ELetIn(ide, e1, e2) -> Ok(ENT(EApp(ET(EFun(ide, e2)), e1)), enstk)
+  | ELetIn(ide, e1, e2) -> (* permit recursion with let in *)
+    let saved = bind (List.hd enstk) (NVar ide) (Some (e1)) in
+    Ok(ENT(EApp(ET(EFun(ide, e2)), ENT(EThunk(e1,saved)))), enstk)
 
   (* binary op with only rhs not terminal *)
   | EBPrim(ET(c1), bop, ENT(e2)) -> (match trace1_expr e2 enstk with
