@@ -107,25 +107,34 @@ let rec toccurs (x: int) (t: typing) : bool = match t with
   | TBool
   | TInt -> false
   | TFun(t1,t2) -> (toccurs x t1) || (toccurs x t2)
-(*If t1 = i1 -> o1 and t2 = i2 -> o2, where i1, i2, o1, and o2 are types, then unify(i1 = i2, o1 = o2, C')*)
-let unify (constrset: ConstrSet.t) : tsubst list = 
+
+let unify (constrset: ConstrSet.t) : (tsubst list, constr list) result = 
   let rec helper = function
-    | [] -> []
+    | [] -> Ok([])
     | (TInt, TInt)::t
     | (TBool, TBool)::t -> helper t
     | (TVar x, TVar y)::t when x=y -> helper t
-    | (ty, TVar x)::t when (not (toccurs x ty)) ->
-        let s = (x,ty) in  s::(helper (List.map (docsubst s) t))
-    | (TVar x, ty)::t when (not (toccurs x ty)) ->
-        let s = (x,ty) in  s::(helper (List.map (docsubst s) t))
+
+    | (TVar x, ty)::t when (not (toccurs x ty)) -> (
+      match helper (List.map (docsubst (x,ty)) t) with
+      | Ok(substs) -> Ok((x,ty)::substs)
+      | Error(_) as err -> err
+    )
+    | (ty, TVar x)::t when (not (toccurs x ty)) -> (
+      match helper (List.map (docsubst (x,ty)) t) with
+      | Ok(substs) -> Ok((x,ty)::substs)
+      | Error(_) as err -> err
+    )
     | (TFun(i1,o1),TFun(i2,o2))::t -> helper((i1,i2)::(o1,o2)::t)
-    | _ -> failwith "No unification possible"
+
+    | l -> Error(l)
 in helper (ConstrSet.to_seq constrset |> List.of_seq)
 
 let tinfer_expr (startenv: typenv) (e: expr) = 
   let (t,_,constrs) = getconstrs startenv (-1) e in
-  let substs = unify constrs in
-  dotsubsts substs t
+  match unify constrs with
+  | Ok(substs) -> Ok(dotsubsts substs t)
+  | Error(_) as err -> err
 
 (*Input: types such as 'hello -> 'wow -> 'hello
   Output: 'a -> 'b -> 'a *)
@@ -146,27 +155,26 @@ let norm_vars t =
   
 let types_equal t1 t2 = (norm_vars t1) = (norm_vars t2)
 
-type sigError = DifferentType of typing * typing | TypingError of string
-let respects_sig (def: expr) (tsig: typing) (tenv: typenv) =
-  let inferred = tinfer_expr tenv def in
-  types_equal inferred tsig
-
 type progCheckError = 
-  | NoTypeSignature of ide
-  | SigError of ide * sigError
-  | TypecheckError of string
+  | UnsatConstr of ide * (constr list)
+  | DifferentType of ide * typing * typing
 
-let rec get_typenv (l: (ide*expr*(typing option)) list) : (typenv,ide*typing*typing) result =
+let rec get_typenv (l: (ide*expr*(typing option)) list) : (typenv,progCheckError) result =
   match l with
   | [] -> Ok static_tenv
   | (ide,e,Some(tsig))::t -> (match get_typenv t with
-    | Ok(tenv) when respects_sig e tsig tenv -> Ok(bind tenv (NVar ide) (Some tsig))
-    | Ok(tenv) -> Error((ide, tsig, tinfer_expr tenv e))
-    | Error(_,_,_) as err -> err
+    | Ok(tenv) -> (match tinfer_expr tenv e with
+      | Ok(t) when types_equal tsig t -> Ok(bind tenv (NVar ide) (Some tsig))
+      | Ok(t) -> Error(DifferentType(ide, tsig, t))
+      | Error(constrl) -> Error(UnsatConstr(ide,constrl))
+    )
+    | Error(_) as err -> err
   )
   | (ide,e,None)::t -> (match get_typenv t with 
-    | Ok(tenv) -> Ok(bind tenv (NVar ide) (Some (tinfer_expr tenv e)))
-    | Error(_,_,_) as err -> err
+    | Ok(tenv) -> (match tinfer_expr tenv e with
+      | Ok(t) -> Ok(bind tenv (NVar ide) (Some t))
+      | Error(constrl) -> Error(UnsatConstr(ide,constrl)))
+    | Error(_) as err -> err
   )
 
 let typecheck_prog ((ts,ds,main): program) =
@@ -176,6 +184,8 @@ let typecheck_prog ((ts,ds,main): program) =
     in (ide, e, tsig))
   ds in let zipped = List.rev zipped
   in match get_typenv zipped with
-    | Ok(tenv) -> Ok(tinfer_expr tenv main, tenv)
-    | Error(_,_,_) as err -> err
+    | Ok(tenv) -> (match tinfer_expr tenv main with
+      | Ok(t) -> Ok(t, tenv)
+      | Error(constrs) -> Error(UnsatConstr("main",constrs)))
+    | Error(_) as err -> err
 ;;
