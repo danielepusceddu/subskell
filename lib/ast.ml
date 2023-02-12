@@ -8,6 +8,8 @@ type typing =
   | TFun of typing * typing
   | TVar of int
 
+type tscheme = int list * typing
+
 type binop =
   | BOPlus
   | BOTimes

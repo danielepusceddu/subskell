@@ -1,5 +1,6 @@
 module MapString = Map.Make(String);;
-module IntMap = Map.Make(struct type t = int let compare = compare end);;
+module IntMap = Map.Make(Int);;
+module IntSet = Set.Make(Int);;
 
 (* function to check for duplicates in a list of strings using a Map *)
 let has_dups lst =
