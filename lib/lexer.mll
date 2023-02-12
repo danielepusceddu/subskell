@@ -20,8 +20,6 @@ rule read =
   | "-" { MINUS }
   | "*" { PRODUCT }
   | "=" { EQUAL }
-  | "?=" { BOOLEQ }
-  | ".=" { INTEQ }
 
   | "true" { TRUE }
   | "false" { FALSE }

@@ -20,8 +20,6 @@ open Ast
 %token TRUE
 %token FALSE
 %token LESSEQ
-%token INTEQ
-%token BOOLEQ
 %token EQUAL
 %token LET
 %token IN
@@ -58,7 +56,7 @@ open Ast
 For example, "not 1 = 2 * 3" is parsed as "not (1 = (2 * 3))" *)
 %left AND OR
 %nonassoc NOT
-%left INTEQ BOOLEQ EQUAL LESSEQ
+%left EQUAL LESSEQ
 %left PLUS MINUS
 %left PRODUCT
 
@@ -127,7 +125,6 @@ variable:
     | MINUS { BOMinus }
     | AND { BOAnd }
     | OR { BOOr }
-    | INTEQ { BOIEq}
-    | BOOLEQ { BOBEq }
+    | EQUAL { BOEq }
     | LESSEQ { BOLeq }
 

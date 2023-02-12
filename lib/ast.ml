@@ -16,8 +16,7 @@ type binop =
   | BOMinus
   | BOAnd
   | BOOr
-  | BOBEq
-  | BOIEq
+  | BOEq
   | BOLeq
 
 type unop =

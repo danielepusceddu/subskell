@@ -1,5 +1,6 @@
 open Ast
 open Help
+open Prettyprint
 
 module NameMap = Map.Make(struct type t = name let compare = compare end);;
 type tenv = tscheme NameMap.t;;
@@ -15,10 +16,9 @@ let static_tenv : tenv = List.fold_left
    
    (NBop(BOAnd), ([], TFun(TBool, TFun(TBool, TBool))));
    (NBop(BOOr), ([], TFun(TBool, TFun(TBool, TBool))));
-   (NBop(BOBEq), ([], TFun(TBool, TFun(TBool, TBool))));
+   (NBop(BOEq), ([0], TFun(TVar 0, TFun(TVar 0, TBool))));
    
    (NBop(BOLeq), ([], TFun(TInt, TFun(TInt, TBool))));
-   (NBop(BOIEq), ([], TFun(TInt, TFun(TInt, TBool))));
    
    (NUop(UONot), ([], TFun(TBool, TBool)))
   ]
