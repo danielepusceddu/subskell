@@ -27,53 +27,24 @@ type name =
   | NBop of binop
   | NUop of unop
 
-type env = name -> expr option and
-
-term = 
-  | CNum of int
-  | CBool of bool
-  | EFun of ide * expr
-
-  (* runtime only *)
-  | EClosure of ide * expr * env (* shouldn't need env list *)
-
-and nonterm =
-  | EApp of expr * expr
-  | EIf of expr * expr * expr
-  | EName of name
-  | ELetIn of ide * expr * expr
-  
-  (* runtime only *)
-  | EBPrim of expr * binop * expr
-  | EUPrim of unop * expr
-  | ERet of expr
-  | EThunk of expr * env 
-  
-and expr = 
-  | ET of term
-  | ENT of nonterm(* for lazy evaluation *)
+type pexpr = 
+  | PNum of int
+  | PBool of bool
+  | PFun of ide * pexpr
+  | PApp of pexpr * pexpr
+  | PIf of pexpr * pexpr * pexpr
+  | PName of name
+  | PLetIn of ide * pexpr * pexpr
 
 type typesig = ide * typing
 
-type declaration = ide * expr
+type declaration = ide * pexpr
 
 type typesig_or_decl =
   | STypeSig of typesig
   | SDecl of declaration
 
-type program = typesig list * declaration list * expr
-
-type typenv = ide -> typing option
-type envstack = env list
-let tbottom _ = None
-
-let static_env : env = function
-  | NBop(op) ->  Some(ET(
-      EFun("a", (ET(EFun("b", 
-      ENT(EBPrim(ENT(EName(NVar "a")), op, ENT(EName(NVar "b")))))
-      )))))
-  | NUop(op) ->  Some(ET(EFun("a", ENT(EUPrim(op, ENT(EName(NVar "a")))))))
-  | NVar(_) -> None
+type program = typesig list * declaration list * pexpr
 
 let explode_typesig_or_decl_list (tdl: typesig_or_decl list) : (typesig list * declaration list) =
   let rec helper tdl tl dl = 

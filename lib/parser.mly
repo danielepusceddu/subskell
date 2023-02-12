@@ -1,5 +1,5 @@
 %{
-open Ast
+open Parsingast
 %}
 
 %token EOF
@@ -88,23 +88,23 @@ typesig_or_decl:
     | d = declaration { SDecl(d) }
 
 expr:
-    | LAMBDA p = variable TO e = expr; { ET(EFun(p, e)) }
-    | e1 = expr e2 = expr { ENT(EApp(e1, e2)) } %prec APP
+    | LAMBDA p = variable TO e = expr; { PFun(p, e) }
+    | e1 = expr e2 = expr { PApp(e1, e2) } %prec APP
 
-    | IF; e1 = expr; THEN; e2 = expr; ELSE; e3 = expr; { ENT(EIf(e1, e2, e3)) }
-    | LET x = IDE EQUAL e1 = expr IN e2 = expr { ENT(ELetIn(x,e1,e2)) }
+    | IF; e1 = expr; THEN; e2 = expr; ELSE; e3 = expr; { PIf(e1, e2, e3) }
+    | LET x = IDE EQUAL e1 = expr IN e2 = expr { PLetIn(x,e1,e2) }
 
-    | c = const { ET(c) }
-    | e1 = expr; op = binop; e2 = expr; { ENT(EApp(ENT(EApp(ENT(EName(NBop op)), e1)), e2)) }
-    | o = unop; e = expr; { ENT (EApp(ENT(EName(NUop o)), e)) }
-    | LPAREN op = binop RPAREN { ENT (EName(NBop op))}
-    | LPAREN op = unop RPAREN { ENT (EName(NUop op))}
-    | x = variable { ENT (EName (NVar x)) }
+    | c = const { c }
+    | e1 = expr; op = binop; e2 = expr; { PApp(PApp(PName(NBop op), e1), e2) }
+    | o = unop; e = expr; { PApp(PName(NUop o), e) }
+    | LPAREN op = binop RPAREN { PName(NBop op)}
+    | LPAREN op = unop RPAREN { PName(NUop op)}
+    | x = variable { PName (NVar x) }
     | LPAREN e=expr RPAREN { e }
 
 const:
-    | n = number { CNum(n) }
-    | b = boolean { CBool(b) }
+    | n = number { PNum(n) }
+    | b = boolean { PBool(b) }
 
 number:
     | n = NUM; { n }

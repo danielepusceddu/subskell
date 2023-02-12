@@ -1,4 +1,4 @@
-open Ast
+open Parsingast
 open Help
 open Prettyprint
 
@@ -124,65 +124,54 @@ match unify c1 with
 | Error(_) as err -> err
 
 let rec getconstrs (env: tenv) (max_tvar: int) = function
-  | ET(e) -> (match e with
-    | CNum _ -> (TInt, max_tvar, empty)
-    | CBool _ -> (TBool, max_tvar, empty)
-    | EFun(x,e) -> 
-      let fresh_i = max_tvar+1 in
-      let fresh = TVar fresh_i in
-      let newenv = tbind (NVar x) ([],fresh) env in
-      let (t2, max, c) = getconstrs newenv fresh_i e in
-      (TFun(fresh, t2), max, c)
+  | PNum _ -> (TInt, max_tvar, empty)
+  | PBool _ -> (TBool, max_tvar, empty)
+  | PFun(x,e) -> 
+    let fresh_i = max_tvar+1 in
+    let fresh = TVar fresh_i in
+    let newenv = tbind (NVar x) ([],fresh) env in
+    let (t2, max, c) = getconstrs newenv fresh_i e in
+    (TFun(fresh, t2), max, c)
 
-    | EClosure(_,_,_) -> failwith "EClosure should be runtime only"
+  | PName(x) -> (match tlookup x env with
+    | Some(t) -> (match instantiate max_tvar t with 
+      | (t, max') -> (t, max', empty)
+    )
+    | None -> failwith ("name without type: " ^ (string_of_name x))
   )
 
-  | ENT(e) -> (match e with
-    | EName(x) -> (match tlookup x env with
-      | Some(t) -> (match instantiate max_tvar t with 
-        | (t, max') -> (t, max', empty)
-      )
-      | None -> failwith "name without type"
-    )
+  | PIf(e1, e2, e3) -> 
+    let fresh_i = 1+max_tvar in
+    let fresh = TVar fresh_i in
+    let (t1,max,c1) = getconstrs env fresh_i e1 in
+    let (t2,max,c2) = getconstrs env max e2 in 
+    let (t3,max,c3) = getconstrs env max e3 in
+    let c = add_mul [(t1, TBool); (fresh, t2); (fresh, t3)] empty in
+    let united = union_mul [c1; c2; c3] c in
+    (fresh, max, united)
 
-    | EIf(e1, e2, e3) -> 
-      let fresh_i = 1+max_tvar in
-      let fresh = TVar fresh_i in
-      let (t1,max,c1) = getconstrs env fresh_i e1 in
-      let (t2,max,c2) = getconstrs env max e2 in 
-      let (t3,max,c3) = getconstrs env max e3 in
-      let c = add_mul [(t1, TBool); (fresh, t2); (fresh, t3)] empty in
-      let united = union_mul [c1; c2; c3] c in
-      (fresh, max, united)
+  | PApp(e1, e2) -> 
+    let fresh_i = 1+max_tvar in 
+    let fresh = TVar fresh_i in
+    let (t1,max,c1) = getconstrs env fresh_i e1 in
+    let (t2,max,c2) = getconstrs env max e2 in 
+    let c = ConstrSet.add (t1, TFun(t2, fresh)) empty in
+    let united = union_mul [c1;c2] c in
+    (fresh, max, united)
 
-    | EApp(e1, e2) -> 
-      let fresh_i = 1+max_tvar in 
-      let fresh = TVar fresh_i in
-      let (t1,max,c1) = getconstrs env fresh_i e1 in
-      let (t2,max,c2) = getconstrs env max e2 in 
-      let c = ConstrSet.add (t1, TFun(t2, fresh)) empty in
-      let united = union_mul [c1;c2] c in
-      (fresh, max, united)
-
-    | ELetIn(x,e1,e2) -> ((* modified to allow recursion *)
-      let fresh_i = 1+max_tvar in 
-      let fresh = TVar fresh_i in
-      let env' = tbind (NVar x) ([],fresh) env in
-      let (t1,max,c1) = getconstrs env' fresh_i e1 in
-      match generalize c1 env' x t1 with
-      | Ok(gen_env) -> 
-        let _ = tbind (NVar x) ([],t1) env in
-        let (t2,max,c2) = getconstrs gen_env max e2 in
-        let united = ConstrSet.union c1 c2 in
-        (t2,max,united)
-      | Error(_) -> failwith "constraints"
-    )
-
-    | ERet(_)
-    | EThunk(_,_)
-    | EUPrim(_,_)
-    | EBPrim(_,_,_) -> failwith "Runtime only"
-  )
+  | PLetIn(x,e1,e2) -> ((* modified to allow recursion *)
+    let fresh_i = 1+max_tvar in 
+    let fresh = TVar fresh_i in
+    let env' = tbind (NVar x) ([],fresh) env in
+    let (t1,max,c1) = getconstrs env' fresh_i e1 in
+    match generalize c1 env' x t1 with
+    | Ok(gen_env) -> 
+      let _ = tbind (NVar x) ([],t1) env in
+      let (t2,max,c2) = getconstrs gen_env max e2 in
+      let united = ConstrSet.union c1 c2 in
+      (t2,max,united)
+    | Error(_) -> failwith "constraints"
+)
 ;;
 
 (*Input: types such as 'hello -> 'wow -> 'hello
@@ -213,7 +202,7 @@ let norm_vars_sch ((l,t): tscheme) =
     )
 in helper 0 (l,t)
 
-let tinfer_expr (env: tenv) (e: expr) = 
+let tinfer_expr (env: tenv) (e: pexpr) = 
   let (t,_,constrs) = getconstrs env (-1) e in
   match unify constrs with
   | Ok(substs) -> let (_,t) = dotsubsts substs ([],t) in
@@ -226,7 +215,7 @@ type progCheckError =
   | UnsatConstr of ide * (constr list)
   | DifferentType of ide * typing * typing
 
-let rec get_typenv (l: (ide*expr*(typing option)) list) : (tenv,progCheckError) result =
+let rec get_typenv (l: (ide*pexpr*(typing option)) list) : (tenv,progCheckError) result =
   match l with
   | [] -> Ok static_tenv
   | (ide,e,Some(tsig))::t -> (match get_typenv t with
