@@ -1,26 +1,30 @@
 open Ast
 open Help
 
-type typenv = (name -> typing option)
+module NameMap = Map.Make(struct type t = name let compare = compare end);;
+type tenv = typing NameMap.t;;
 
-let static_tenv : typenv = function
-  | NBop(BOPlus)
-  | NBop(BOMinus)
-  | NBop(BOTimes) -> Some(TFun(TInt, TFun(TInt, TInt)))
+let static_tenv : tenv = List.fold_left 
+  (fun acc (key,v) -> NameMap.add key v acc) 
 
-  | NBop(BOAnd)
-  | NBop(BOOr) -> Some(TFun(TBool, TFun(TBool, TBool)))
+  NameMap.empty
 
-  | NBop(BOBEq) -> Some(TFun(TBool, TFun(TBool, TBool)))
+  [(NBop(BOPlus), TFun(TInt, TFun(TInt, TInt)));
+   (NBop(BOMinus), TFun(TInt, TFun(TInt, TInt)));
+   (NBop(BOTimes), TFun(TInt, TFun(TInt, TInt)));
+   
+   (NBop(BOAnd), TFun(TBool, TFun(TBool, TBool)));
+   (NBop(BOOr), TFun(TBool, TFun(TBool, TBool)));
+   (NBop(BOBEq), TFun(TBool, TFun(TBool, TBool)));
+   
+   (NBop(BOLeq), TFun(TInt, TFun(TInt, TBool)));
+   (NBop(BOIEq), TFun(TInt, TFun(TInt, TBool)));
+   
+   (NUop(UONot), TFun(TBool, TBool))
+  ]
 
-  | NBop(BOLeq)
-  | NBop(BOIEq) -> Some(TFun(TInt, TFun(TInt, TBool)))
-
-  | NUop(UONot) -> Some(TFun(TBool, TBool))
-
-  | NVar(_) -> None
-
-let bind f x v = fun y -> if x=y then v else f y
+let tbind : (name -> typing -> tenv -> tenv) = NameMap.add
+let tlookup : (name -> tenv -> typing option) = NameMap.find_opt
 
 type constr = typing * typing;;
 module ConstrSet = Set.Make(struct type t = constr let compare = compare end);;
@@ -28,14 +32,14 @@ let add_mul = List.fold_right ConstrSet.add;;
 let empty = ConstrSet.empty;;
 let union_mul = List.fold_right ConstrSet.union;;
 
-let rec getconstrs (typenv: typenv) (max_tvar: int) = function
+let rec getconstrs (env: tenv) (max_tvar: int) = function
   | ET(e) -> (match e with
     | CNum _ -> (TInt, max_tvar, empty)
     | CBool _ -> (TBool, max_tvar, empty)
     | EFun(x,e) -> 
       let fresh_i = max_tvar+1 in
       let fresh = TVar fresh_i in
-      let newenv = bind typenv (NVar x) (Some fresh) in
+      let newenv = tbind (NVar x) fresh env in
       let (t2, max, c) = getconstrs newenv fresh_i e in
       (TFun(fresh, t2), max, c)
 
@@ -43,7 +47,7 @@ let rec getconstrs (typenv: typenv) (max_tvar: int) = function
   )
 
   | ENT(e) -> (match e with
-    | EName(x) -> (match typenv x with
+    | EName(x) -> (match tlookup x env with
       | Some(t) -> (t, max_tvar, empty)
       | None -> failwith "name without type"
     )
@@ -51,9 +55,9 @@ let rec getconstrs (typenv: typenv) (max_tvar: int) = function
     | EIf(e1, e2, e3) -> 
       let fresh_i = 1+max_tvar in
       let fresh = TVar fresh_i in
-      let (t1,max,c1) = getconstrs typenv fresh_i e1 in
-      let (t2,max,c2) = getconstrs typenv max e2 in 
-      let (t3,max,c3) = getconstrs typenv max e3 in
+      let (t1,max,c1) = getconstrs env fresh_i e1 in
+      let (t2,max,c2) = getconstrs env max e2 in 
+      let (t3,max,c3) = getconstrs env max e3 in
       let c = add_mul [(t1, TBool); (fresh, t2); (fresh, t3)] empty in
       let united = union_mul [c1; c2; c3] c in
       (fresh, max, united)
@@ -61,8 +65,8 @@ let rec getconstrs (typenv: typenv) (max_tvar: int) = function
     | EApp(e1, e2) -> 
       let fresh_i = 1+max_tvar in 
       let fresh = TVar fresh_i in
-      let (t1,max,c1) = getconstrs typenv fresh_i e1 in
-      let (t2,max,c2) = getconstrs typenv max e2 in 
+      let (t1,max,c1) = getconstrs env fresh_i e1 in
+      let (t2,max,c2) = getconstrs env max e2 in 
       let c = ConstrSet.add ((t1, TFun(t2, fresh))) empty in
       let united = union_mul [c1;c2] c in
       (fresh, max, united)
@@ -70,10 +74,10 @@ let rec getconstrs (typenv: typenv) (max_tvar: int) = function
     | ELetIn(x,e1,e2) -> (* modified to allow recursion *)
       let fresh_i = 1+max_tvar in 
       let fresh = TVar fresh_i in
-      let typenv' = bind typenv (NVar x) (Some fresh) in
-      let (t1,max,c1) = getconstrs typenv' fresh_i e1 in
-      let typenv' = bind typenv (NVar x) (Some t1) in
-      let (t2,max,c2) = getconstrs typenv' max e2 in
+      let env' = tbind (NVar x) fresh env in
+      let (t1,max,c1) = getconstrs env' fresh_i e1 in
+      let env' = tbind (NVar x) t1 env in
+      let (t2,max,c2) = getconstrs env' max e2 in
       let united = ConstrSet.union c1 c2 in
       (t2,max,united)
 
@@ -130,8 +134,8 @@ let unify (constrset: ConstrSet.t) : (tsubst list, constr list) result =
     | l -> Error(l)
 in helper (ConstrSet.to_seq constrset |> List.of_seq)
 
-let tinfer_expr (startenv: typenv) (e: expr) = 
-  let (t,_,constrs) = getconstrs startenv (-1) e in
+let tinfer_expr (env: tenv) (e: expr) = 
+  let (t,_,constrs) = getconstrs env (-1) e in
   match unify constrs with
   | Ok(substs) -> Ok(dotsubsts substs t)
   | Error(_) as err -> err
@@ -159,12 +163,12 @@ type progCheckError =
   | UnsatConstr of ide * (constr list)
   | DifferentType of ide * typing * typing
 
-let rec get_typenv (l: (ide*expr*(typing option)) list) : (typenv,progCheckError) result =
+let rec get_typenv (l: (ide*expr*(typing option)) list) : (tenv,progCheckError) result =
   match l with
   | [] -> Ok static_tenv
   | (ide,e,Some(tsig))::t -> (match get_typenv t with
     | Ok(tenv) -> (match tinfer_expr tenv e with
-      | Ok(t) when types_equal tsig t -> Ok(bind tenv (NVar ide) (Some tsig))
+      | Ok(t) when types_equal tsig t -> Ok(tbind (NVar ide) tsig tenv)
       | Ok(t) -> Error(DifferentType(ide, tsig, t))
       | Error(constrl) -> Error(UnsatConstr(ide,constrl))
     )
@@ -172,7 +176,7 @@ let rec get_typenv (l: (ide*expr*(typing option)) list) : (typenv,progCheckError
   )
   | (ide,e,None)::t -> (match get_typenv t with 
     | Ok(tenv) -> (match tinfer_expr tenv e with
-      | Ok(t) -> Ok(bind tenv (NVar ide) (Some t))
+      | Ok(t) -> Ok(tbind (NVar ide) t tenv)
       | Error(constrl) -> Error(UnsatConstr(ide,constrl)))
     | Error(_) as err -> err
   )

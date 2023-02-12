@@ -17,7 +17,7 @@ fib = let fib = \\n -> if n .= 0 then 0 else if n .= 1 then 1 else  fib (n-1) + 
 main = do fib 10" |> parse |> (eval_prog (-1)) = Ok (ET (CNum 55)));
 print_endline("Test passed.");
 
-let has_type (env: typenv) (x: ide) (t: typing) = match env (NVar x) with
+let has_type (env: tenv) (x: ide) (t: typing) = match tlookup (NVar x) env with
 | Some(t2) -> t=t2
 | None -> false in
 
