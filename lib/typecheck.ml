@@ -196,7 +196,11 @@ type infer_error = NameWithoutType of name | UnsatConstr of pexpr * (constr list
 
 (* We infer the type of an expression in a certain type environment.
    The result is a type, a set of constraints, and an annotated parse tree.
-   We also keep track of the next fresh type variable we may use. *)
+   We also keep track of the next fresh type variable we may use.
+   Note that returning a type environment instead 
+   of an annotated parse tree is not a good choice: 
+   consider (let x = (not) in x) (let x = true in x).
+   To which x should the resulting tenv refer to? *)
 let rec getconstrs (env: tenv) (max_tvar: int) = function
   (* These expressions have primitive types:
      no constraints are generated, 
