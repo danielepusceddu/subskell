@@ -3,7 +3,7 @@ open Parser
 open Base26p
 }
 
-let white = [' ' '\t']+
+let white = [' ' '\t' '\n']+
 let vertical = ['\n']+
 let letter = ['a'-'z' 'A'-'Z']
 let lowerchr = ['a'-'z']
@@ -31,19 +31,15 @@ rule read =
 
   | "(" { LPAREN }
   | ")" { RPAREN }
-  | "::" { DOUBLECOLON }
-  | vertical { VERTICAL }
+  | ":" { COLON }
 
   | "if" { IF }
   | "then" { THEN }
   | "else" { ELSE }
   | "->" { TO }
-  | "do" { DO }
-  | "main" { MAIN }
   | "let" { LET }
   | "in" { IN }
   | "\\" { LAMBDA }
-  | "." { DOT }
 
   | "int" { INT }
   | "bool" { BOOL }

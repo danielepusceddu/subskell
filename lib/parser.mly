@@ -27,20 +27,16 @@ open Parsingast
 (* SEPARATORS *)
 %token LPAREN
 %token RPAREN
-%token DOUBLECOLON
-%token VERTICAL
+%token COLON
 
 (* TOKENS FOR TYPES *)
 %token INT
 %token BOOL
 %token TO
+%token LAMBDA
 
 (* PROGRAM *)
-%token MAIN
-%token DO
-%token LAMBDA
-%token DOT
-%start <program> prog
+%start <pexpr> prog
 
 (* PRECEDENCE *)
 
@@ -65,10 +61,7 @@ For example, "not 1 = 2 * 3" is parsed as "not (1 = (2 * 3))" *)
 %%
 
 prog:
-    | sl = separated_nonempty_list(VERTICAL, typesig_or_decl); DOT; VERTICAL; m = main; EOF { let (tl,dl) = explode_typesig_or_decl_list sl in assert_no_doubles dl tl; (tl, dl, m) }
-
-main:
-    | MAIN EQUAL DO e = expr { e }
+    | e = expr EOF { e }
 
 typing:
     | INT { TInt }
@@ -77,22 +70,13 @@ typing:
     | tvar = TYPEVAR { TVar(tvar) }
     | LPAREN t = typing RPAREN { t }
 
-typesig:
-    | x = IDE; DOUBLECOLON; t = typing; { (x, t) }
-
-declaration:
-    | x = IDE EQUAL e = expr { (x, e)}
-
-typesig_or_decl:
-    | t = typesig { STypeSig(t) }
-    | d = declaration { SDecl(d) }
-
 expr:
     | LAMBDA p = variable TO e = expr; { PFun(p, e) }
     | e1 = expr e2 = expr { PApp(e1, e2) } %prec APP
 
     | IF; e1 = expr; THEN; e2 = expr; ELSE; e3 = expr; { PIf(e1, e2, e3) }
-    | LET x = IDE EQUAL e1 = expr IN e2 = expr { PLetIn(x,e1,e2) }
+    | LET x = IDE EQUAL e1 = expr IN e2 = expr { PLetIn(x,None,e1,e2) }
+    | LET x = IDE COLON t=typing EQUAL e1 = expr IN e2 = expr { PLetIn(x,Some t,e1,e2) }
 
     | c = const { c }
     | e1 = expr; op = binop; e2 = expr; { PApp(PApp(PName(NBop op), e1), e2) }

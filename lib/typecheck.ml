@@ -1,6 +1,14 @@
 open Parsingast
 open Help
-open Prettyprint
+
+type aexpr = 
+  | ANum of int
+  | ABool of bool
+  | AFun of ide * aexpr
+  | AApp of aexpr * aexpr
+  | AIf of aexpr * aexpr * aexpr
+  | AName of name
+  | ALetIn of ide * typing * aexpr * aexpr
 
 module NameMap = Map.Make(struct type t = name let compare = compare end);;
 type tenv = tscheme NameMap.t;;
@@ -111,67 +119,117 @@ let b = NameMap.bindings env in
 let k = List.filter_map (fun (_,(_,k)) -> (match k with | TVar x -> Some x | _ -> None)) b in
 List.to_seq k |> IntSet.of_seq
 
-let generalize c1 env x t = 
-match unify c1 with
-| Ok(substl) ->
-    let (_,u1) = dotsubsts substl ([],t) in
-    let env1 = dotsubsts_env substl env in
-    let vars_in_u1 = vars_in_t u1 in
-    let vars_in_env1 = vars_in_env env1 in
-    let diff = IntSet.diff vars_in_u1 vars_in_env1 in
-    let diffl = IntSet.to_seq diff |> List.of_seq in
-    Ok(tbind (NVar x) (diffl,u1) env1)
-| Error(_) as err -> err
+let generalize_all t = (vars_in_t t, t);;
 
+let generalize_nobind c1 env t = match unify c1 with
+  | Ok(substl) ->
+      let (_,u1) = dotsubsts substl ([],t) in
+      let env1 = dotsubsts_env substl env in
+      let vars_in_u1 = vars_in_t u1 in
+      let vars_in_env1 = vars_in_env env1 in
+      let diff = IntSet.diff vars_in_u1 vars_in_env1 in
+      let diffl = IntSet.to_seq diff |> List.of_seq in
+      Ok((diffl,u1), env1)
+  | Error(_) as err -> err
+;;
+
+let generalize c1 env x t = match unify c1 with
+  | Ok(substl) ->
+      let (_,u1) = dotsubsts substl ([],t) in
+      let env1 = dotsubsts_env substl env in
+      let vars_in_u1 = vars_in_t u1 in
+      let vars_in_env1 = vars_in_env env1 in
+      let diff = IntSet.diff vars_in_u1 vars_in_env1 in
+      let diffl = IntSet.to_seq diff |> List.of_seq in
+      Ok(tbind (NVar x) (diffl,u1) env1)
+  | Error(_) as err -> err
+
+(* changes all n variables in a type, using n fresh variables *)
+let rec refresh (t: typing) (max_tvar: int) = match t with
+  | TInt -> (TInt, max_tvar)
+  | TBool -> (TBool, max_tvar)
+  | TVar x -> (TVar (x+1), max_tvar+1)
+  | TFun(t1,t2) -> let (t1',max') = refresh t1 max_tvar in 
+                   let (t2',max') = refresh t2 max' in 
+                   (TFun(t1',t2'), max')
+
+let hint2constr (hint: typing option) (inferred: typing) (max_tvar: int) : (ConstrSet.t * int)= match hint with
+  | None -> (ConstrSet.empty, max_tvar)
+  | Some(t) -> let (t',max') = refresh t max_tvar in
+               (ConstrSet.add (t',inferred) ConstrSet.empty,max')
+
+type infer_error = NameWithoutType of name | UnsatConstr of pexpr * (constr list)
 let rec getconstrs (env: tenv) (max_tvar: int) = function
-  | PNum _ -> (TInt, max_tvar, empty)
-  | PBool _ -> (TBool, max_tvar, empty)
-  | PFun(x,e) -> 
+  | PNum n -> Ok(TInt, ANum n, max_tvar, empty)
+  | PBool b -> Ok(TBool, ABool b, max_tvar, empty)
+  | PFun(x,e) -> (
     let fresh_i = max_tvar+1 in
     let fresh = TVar fresh_i in
     let newenv = tbind (NVar x) ([],fresh) env in
-    let (t2, max, c) = getconstrs newenv fresh_i e in
-    (TFun(fresh, t2), max, c)
-
+    match getconstrs newenv fresh_i e with 
+    | Error(_) as e -> e
+    | Ok(t2, e', max, c) -> Ok(TFun(fresh, t2), AFun(x,e'), max, c)
+    )
   | PName(x) -> (match tlookup x env with
     | Some(t) -> (match instantiate max_tvar t with 
-      | (t, max') -> (t, max', empty)
+      | (t, max') -> Ok((t, AName(x), max', empty))
     )
-    | None -> failwith ("name without type: " ^ (string_of_name x))
+    | None -> Error(NameWithoutType x)
   )
 
-  | PIf(e1, e2, e3) -> 
+  | PIf(e1, e2, e3) -> (
     let fresh_i = 1+max_tvar in
     let fresh = TVar fresh_i in
-    let (t1,max,c1) = getconstrs env fresh_i e1 in
-    let (t2,max,c2) = getconstrs env max e2 in 
-    let (t3,max,c3) = getconstrs env max e3 in
-    let c = add_mul [(t1, TBool); (fresh, t2); (fresh, t3)] empty in
-    let united = union_mul [c1; c2; c3] c in
-    (fresh, max, united)
+    match getconstrs env fresh_i e1 with
+    | Error(_) as e -> e
+    | Ok(t1,e1',max,c1) -> (match getconstrs env max e2 with
+      | Error(_) as e -> e
+      | Ok(t2,e2',max,c2) -> (match getconstrs env max e3 with
+        | Error(_) as e -> e
+        | Ok (t3,e3',max,c3) -> 
+          let c = add_mul [(t1, TBool); (fresh, t2); (fresh, t3)] empty in 
+          let united = union_mul [c1; c2; c3] c in
+          Ok(fresh, AIf(e1',e2',e3'), max, united)
+      )
+    )
+  )
 
-  | PApp(e1, e2) -> 
+  | PApp(e1, e2) -> (
     let fresh_i = 1+max_tvar in 
     let fresh = TVar fresh_i in
-    let (t1,max,c1) = getconstrs env fresh_i e1 in
-    let (t2,max,c2) = getconstrs env max e2 in 
-    let c = ConstrSet.add (t1, TFun(t2, fresh)) empty in
-    let united = union_mul [c1;c2] c in
-    (fresh, max, united)
+    match getconstrs env fresh_i e1 with
+    | Error(_) as e -> e
+    | Ok(t1,e1',max,c1) -> (match getconstrs env max e2 with
+      | Error(_) as e -> e
+      | Ok(t2,e2',max,c2) -> 
+        let c = ConstrSet.add (t1, TFun(t2, fresh)) empty in
+        let united = union_mul [c1;c2] c in
+        Ok(fresh, AApp(e1',e2'), max, united)
+    )
+  )
 
-  | PLetIn(x,e1,e2) -> ((* modified to allow recursion *)
+  | PLetIn(x,hint,e1,e2) as p -> ((* modified to allow recursion *)
     let fresh_i = 1+max_tvar in 
     let fresh = TVar fresh_i in
     let env' = tbind (NVar x) ([],fresh) env in
-    let (t1,max,c1) = getconstrs env' fresh_i e1 in
-    match generalize c1 env' x t1 with
-    | Ok(gen_env) -> 
-      let _ = tbind (NVar x) ([],t1) env in
-      let (t2,max,c2) = getconstrs gen_env max e2 in
-      let united = ConstrSet.union c1 c2 in
-      (t2,max,united)
-    | Error(_) -> failwith "constraints"
-)
+    match getconstrs env' fresh_i e1 with
+    | Error(_) as err -> err
+    | Ok(t1,e1',max,c1) -> (
+      let (chint,max) = hint2constr hint t1 max in
+      let c1 = ConstrSet.union c1 chint in
+      match generalize_nobind c1 env' t1 with
+      | Error(err) -> Error(UnsatConstr(p, err))
+      | Ok((diffl,u1), env1) -> (
+        let gen_env = tbind (NVar x) (diffl,u1) env1 in
+        match getconstrs gen_env max e2 with
+        | Error(_) as err -> err
+        | Ok(t2,e2',max,c2) -> 
+          let united = ConstrSet.union c1 c2 in
+          let (instantiated,_) = instantiate 0 (diffl,u1) in
+          Ok(t2,ALetIn(x,instantiated, e1', e2'), max,united)
+      )
+    )
+  )
 ;;
 
 (*Input: types such as 'hello -> 'wow -> 'hello
@@ -189,8 +247,37 @@ let norm_vars t (start_from: int) (fresh: int) =
       let (t2', next'', m'') = helper start_from next' m' t2 in
       (TFun(t1',t2'), next'', m'')
   ) 
-  in let (t',_,_) = helper start_from fresh IntMap.empty t
-  in t'
+  in let (t',n,_) = helper start_from fresh IntMap.empty t
+  in (t',n)
+
+let norm_annotations e = 
+  let rec helper fresh = function
+  | ANum n -> (ANum n, fresh)
+  | ABool b -> (ABool b, fresh)
+  | AName x -> (AName x, fresh)
+
+  | AFun(x, e) -> 
+    let (e',fresh) = helper fresh e in
+    (AFun(x,e'), fresh)
+
+  | AApp(e1,e2) ->
+    let (e1',fresh) = helper fresh e1 in
+    let (e2',fresh) = helper fresh e2 in
+    (AApp(e1',e2'), fresh)
+
+  | AIf(e1,e2,e3) ->
+    let (e1',fresh) = helper fresh e1 in
+    let (e2',fresh) = helper fresh e2 in
+    let (e3',fresh) = helper fresh e3 in
+    (AIf(e1',e2',e3'), fresh)
+  
+  | ALetIn(x,t,e1,e2) ->
+    let (t', fresh) = norm_vars t 0 fresh in
+    let (e1',fresh) = helper fresh e1 in
+    let (e2',fresh) = helper fresh e2 in
+    (ALetIn(x,t',e1',e2'), fresh)
+  in helper 0 e
+;;
 
 let norm_vars_sch ((l,t): tscheme) =
   let rec helper (fresh:int) = function
@@ -203,45 +290,14 @@ let norm_vars_sch ((l,t): tscheme) =
 in helper 0 (l,t)
 
 let tinfer_expr (env: tenv) (e: pexpr) = 
-  let (t,_,constrs) = getconstrs env (-1) e in
-  match unify constrs with
-  | Ok(substs) -> let (_,t) = dotsubsts substs ([],t) in
-      Ok(norm_vars_sch (IntSet.to_seq (vars_in_t t) |> List.of_seq, t))
+  match getconstrs env (-1) e with
   | Error(_) as err -> err
+  | Ok(t,e',_,constrs) -> (
+    match unify constrs with
+    | Ok(substs) -> 
+        let (_,t) = dotsubsts substs ([],t) in
+        Ok(norm_vars_sch (IntSet.to_seq (vars_in_t t) |> List.of_seq, t), norm_annotations e')
+    | Error(err) -> Error(UnsatConstr(e, err))
+  )
 
 let types_equal (t1: typing) (t2: typing) = (norm_vars t1 0 0) = (norm_vars t2 0 0)
-
-type progCheckError = 
-  | UnsatConstr of ide * (constr list)
-  | DifferentType of ide * typing * typing
-
-let rec get_typenv (l: (ide*pexpr*(typing option)) list) : (tenv,progCheckError) result =
-  match l with
-  | [] -> Ok static_tenv
-  | (ide,e,Some(tsig))::t -> (match get_typenv t with
-    | Ok(tenv) -> (match tinfer_expr tenv e with
-      | Ok((_,t)) when types_equal tsig t -> Ok(tbind (NVar ide) ([],tsig) tenv)
-      | Ok((_,t)) -> Error(DifferentType(ide, tsig, t))
-      | Error(constrl) -> Error(UnsatConstr(ide,constrl))
-    )
-    | Error(_) as err -> err
-  )
-  | (ide,e,None)::t -> (match get_typenv t with 
-    | Ok(tenv) -> (match tinfer_expr tenv e with
-      | Ok(t) -> Ok(tbind (NVar ide) t tenv)
-      | Error(constrl) -> Error(UnsatConstr(ide,constrl)))
-    | Error(_) as err -> err
-  )
-
-let typecheck_prog ((ts,ds,main): program) =
-  let zipped = List.map
-  (fun (ide,e) -> 
-    let tsig = List.find_map (fun (ide2,t) -> if ide=ide2 then Some t else None) ts
-    in (ide, e, tsig))
-  ds in let zipped = List.rev zipped
-  in match get_typenv zipped with
-    | Ok(tenv) -> (match tinfer_expr tenv main with
-      | Ok(t) -> Ok(t, tenv)
-      | Error(constrs) -> Error(UnsatConstr("main",constrs)))
-    | Error(_) as err -> err
-;;
