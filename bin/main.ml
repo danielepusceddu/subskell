@@ -6,14 +6,14 @@ open SubskellLib.Typecheck;;
 print_endline("\nTesting powers of 2...");
 assert ("
 let power : int -> int -> int = 
-  \\n -> \\m -> if m = 0 then 1 else n*power n (m-1) 
+  fun n -> fun m -> if m = 0 then 1 else n*power n (m-1) 
 in let powersof2 = power 2 in
 powersof2 10"  |> parse |> (eval_prog (-1)) = Ok (ET (CNum 1024)));
 print_endline("Test passed.");
 
 print_endline("\nTesting Fibonacci...");
 assert ("
-let fib : int -> int = \\n -> 
+let fib : int -> int = fun n -> 
   if n = 0 then 0 
   else if n = 1 then 1 
   else fib (n-1) + fib (n-2)
@@ -22,13 +22,13 @@ print_endline("Test passed.");
 
 print_endline("\nTesting id...");
 assert ("
-let id = \\x -> x
+let id = fun x -> x
 in if id true then id 5 else id 9" |> parse |> (eval_prog (-1)) = Ok (ET (CNum 5)));
 print_endline("Test passed.");
 
 print_endline("\nTesting eq polymorphism...");
 assert ("
-let id = \\x -> x
+let id = fun x -> x
 in let eq = (=)
 in if (id true) = true && (id 5) = 5 
    then id 1337 
@@ -65,7 +65,7 @@ in
 print_endline("\nTesting powers of 2 typecheck...");
 assert (match ("
 let power = 
-  \\n -> \\m -> if m = 0 then 1 else n*power n (m-1) 
+  fun n -> fun m -> if m = 0 then 1 else n*power n (m-1) 
 in let powersof2 = power 2 in
 powersof2 10" |> parse |> (tinfer_expr static_tenv)) with
 | Ok(maint, e') -> let has_type = has_type e' in 
@@ -76,7 +76,7 @@ print_endline("Test passed.");
 
 print_endline("\nTesting id typecheck...");
 assert (match ("
-let id = \\x -> x
+let id = fun x -> x
 in if id true then id 5 else id 9" |> parse |> (tinfer_expr static_tenv)) with
 | Ok(maint, e') -> let has_type = has_type e' in 
 maint=TInt && (has_type "id" (TFun(TVar 1, TVar 1)))

@@ -39,7 +39,7 @@ rule read =
   | "->" { TO }
   | "let" { LET }
   | "in" { IN }
-  | "\\" { LAMBDA }
+  | "fun" { LAMBDA }
 
   | "int" { INT }
   | "bool" { BOOL }
