@@ -1,3 +1,4 @@
+open Typescommon
 open Typesstatic
 open Typesruntime
 open Typecheck
@@ -30,12 +31,32 @@ let eval_prog (max: int) (pe: pexpr) : (expr, evalerr) result =
         | Error(e,s) -> Error(RuntimeErr(e, s))
     )
 ;;
+
+let rec string_of_expr = function
+  | ET(e) -> (match e with
+    | CNum(n) -> string_of_int n
+    | CBool(b) -> string_of_bool b
+    | EFun(x, e) -> "fun " ^ x ^ " -> " ^ (string_of_expr e)
+    | EClosure(x, e, _) -> "Closure(" ^ x ^ ", " ^ (string_of_expr e) ^ ", <env>)"
+  )
+  | ENT(e) -> (match e with
+    | EApp(e1,e2) -> "(" ^ (string_of_expr e1) ^ ")("  ^ (string_of_expr e2) ^ ")"
+    | EIf(e1,e2,e3) -> "if "  ^ (string_of_expr e1) ^ " then "  ^ (string_of_expr e2) ^ " else "   ^ (string_of_expr e3)
+    | EName n -> string_of_name n
+    | ELetIn(x,e1,e2) -> "let " ^ x ^ " = " ^ (string_of_expr e1) ^ " in "  ^ (string_of_expr e2)
+    | EBPrim(e1,op,e2) -> "BPrim(" ^ (string_of_binop op) ^ ", " ^ (string_of_expr e1) ^ ", " ^ (string_of_expr e2) ^ ")"
+    | EUPrim(op, e) -> "UPrim(" ^ (string_of_unop op) ^ ", " ^ (string_of_expr e) ^ ")"
+    | ERet(e) -> "Ret(" ^ (string_of_expr e) ^ ")"
+    | EThunk(e,_) -> "Thunk(" ^ (string_of_expr e) ^ ", <env>)"
+  )
+;;
   
-(*
 let string_of_evalerr = function
   | RuntimeErr(e,s) -> "Runtime Error \"" ^ s ^ "\" at step " ^ (string_of_expr e)
   | ProgCheckErr(err) -> string_of_infer_error err
+;;
 
 let string_of_evalresult = function
   | Ok(e) -> "Result: " ^ (string_of_expr e)
-  | Error(err) -> string_of_evalerr err*)
+  | Error(err) -> string_of_evalerr err
+;;
