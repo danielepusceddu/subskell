@@ -1,4 +1,6 @@
 open SubskellLib.Main;;
 open SubskellLib.Typecheck;;
-open SubskellLib.Parsingast;;
-open SubskellLib.Runtimeast;;
+open SubskellLib.Typescommon;;
+open SubskellLib.Typesstatic;;
+open SubskellLib.Typesruntime;;
+open SubskellLib.Runtime;;

@@ -1,6 +1,7 @@
-open Parsingast
-open Runtimeast
+open Typesstatic
+open Typesruntime
 open Typecheck
+open Runtime
 
 let parse (s : string) : pexpr =
   let lexbuf = Lexing.from_string s in
@@ -30,3 +31,11 @@ let eval_prog (max: int) (pe: pexpr) : (expr, evalerr) result =
     )
 ;;
   
+(*
+let string_of_evalerr = function
+  | RuntimeErr(e,s) -> "Runtime Error \"" ^ s ^ "\" at step " ^ (string_of_expr e)
+  | ProgCheckErr(err) -> string_of_infer_error err
+
+let string_of_evalresult = function
+  | Ok(e) -> "Result: " ^ (string_of_expr e)
+  | Error(err) -> string_of_evalerr err*)

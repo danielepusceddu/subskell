@@ -1,21 +1,6 @@
-open Parsingast
+open Typescommon
+open Typesstatic
 open Help
-
-(* AST in which type annotations are forced *)
-type aexpr = 
-  | ANum of int
-  | ABool of bool
-  | AFun of ide * aexpr
-  | AApp of aexpr * aexpr
-  | AIf of aexpr * aexpr * aexpr
-  | AName of name
-  | ALetIn of ide * tscheme * aexpr * aexpr
-
-(* Types for type environment *)
-module NameMap = Map.Make(struct type t = name let compare = compare end);;
-type tenv = tscheme NameMap.t;;
-let tbind : (name -> tscheme -> tenv -> tenv) = NameMap.add
-let tlookup : (name -> tenv -> tscheme option) = NameMap.find_opt
 
 (* This tenv contains the types of each predefined name. *)
 let static_tenv : tenv = List.fold_left 
@@ -38,15 +23,14 @@ let static_tenv : tenv = List.fold_left
    (NUop(UONot), ([], TFun(TBool, TBool)))
   ]
 
-(* Type for type constraints *)
-type constr = typing * typing;;
-module ConstrSet = Set.Make(struct type t = constr let compare = compare end);;
+(* Utility functions for type environment *)
+let tbind : (name -> tscheme -> tenv -> tenv) = NameMap.add
+let tlookup : (name -> tenv -> tscheme option) = NameMap.find_opt
+
+(* Utility functions for type constraints *)
 let add_mul = List.fold_right ConstrSet.add;;
 let empty = ConstrSet.empty;;
 let union_mul = List.fold_right ConstrSet.union;;
-
-(* Type substitutions *)
-type tsubst = int * typing
 
 (* Substitutes type variable 'x' for type 'newt' in typescheme l,t.
    Also cleans the list of captured variables l. *)
@@ -209,11 +193,6 @@ let stricter_or_equal (t1: tscheme) (t2: tscheme) =
                   t1'r = t1''r
   | Error(_) -> false
 ;;
-
-type infer_error = 
-  | NameWithoutType of name 
-  | UnsatConstr of pexpr * (constr list)
-  | BadTypeHint of ide * tscheme * tscheme
 
 (* We infer the type of an expression in a certain type environment.
    The result is a type, a set of constraints, and an annotated parse tree.

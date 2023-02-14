@@ -1,5 +1,6 @@
 %{
-open Parsingast
+open Typescommon
+open Typesstatic
 %}
 
 %token EOF

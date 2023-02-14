@@ -1,6 +1,7 @@
 open SubskellLib.Main;;
-open SubskellLib.Runtimeast;;
-open SubskellLib.Parsingast;;
+open SubskellLib.Typescommon;;
+open SubskellLib.Typesstatic;;
+open SubskellLib.Typesruntime;;
 open SubskellLib.Typecheck;;
 
 print_endline("\nTesting powers of 2...");
