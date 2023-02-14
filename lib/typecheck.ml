@@ -129,8 +129,11 @@ let unify (constrset: ConstrSet.t) : (tsubst list, constr list) result =
        the second to check if the output types are equal. *)
     | (TFun(i1,o1),TFun(i2,o2))::t -> helper((i1,i2)::(o1,o2)::t)
 
-    (* Every other case results in an unsatisfiable set of constraints. *)
-    | l -> Error(l)
+    (* Every other case results in an unsatisfiable set of constraints.
+       Create a list of unsatisfiable constraints. *)
+    | c::l -> (match helper l with
+      | Error(l') -> Error(c::l')
+      | Ok(_) -> Error([c]))
   in helper (ConstrSet.to_seq constrset |> List.of_seq)
 ;;
 
