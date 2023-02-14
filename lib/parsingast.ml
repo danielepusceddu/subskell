@@ -32,4 +32,4 @@ type pexpr =
   | PApp of pexpr * pexpr
   | PIf of pexpr * pexpr * pexpr
   | PName of name
-  | PLetIn of ide * (typing option) * pexpr * pexpr
+  | PLetIn of ide * (tscheme option) * pexpr * pexpr

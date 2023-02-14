@@ -9,7 +9,7 @@ type aexpr =
   | AApp of aexpr * aexpr
   | AIf of aexpr * aexpr * aexpr
   | AName of name
-  | ALetIn of ide * typing * aexpr * aexpr
+  | ALetIn of ide * tscheme * aexpr * aexpr
 
 (* Types for type environment *)
 module NameMap = Map.Make(struct type t = name let compare = compare end);;
@@ -174,25 +174,43 @@ let generalize_nobind c1 env t = match unify c1 with
 ;;
 
 (* Changes all n variables in a type, using n fresh variables. *)
-let rec refresh (t: typing) (max_tvar: int) = match t with
-  | TInt -> (TInt, max_tvar)
-  | TBool -> (TBool, max_tvar)
-  | TVar x -> (TVar (x+1), max_tvar+1)
-  | TFun(t1,t2) -> let (t1',max') = refresh t1 max_tvar in 
-                   let (t2',max') = refresh t2 max' in 
-                   (TFun(t1',t2'), max')
+let rec refresh_helper (t: typing) (max_tvar: int) (m: int IntMap.t) = match t with
+| TInt -> (TInt, max_tvar, m)
+| TBool -> (TBool, max_tvar, m)
+| TVar x -> (match IntMap.find_opt x m with 
+  | Some y -> (TVar y, max_tvar, m)
+  | None -> (TVar (max_tvar+1), max_tvar+1, IntMap.add x (max_tvar+1) m)
+)
+| TFun(t1,t2) -> let (t1',max,m) = refresh_helper t1 max_tvar m in 
+                 let (t2',max,m) = refresh_helper t2 max m in 
+                 (TFun(t1',t2'), max,m)
+let  refresh (t: typing) (max_tvar: int) = 
+  let (newt,_,_) = refresh_helper t max_tvar (IntMap.empty) in newt
 
-(* Adds a constraint for the inferred type to be equal to the hint type, if any.
-   This has issues: for example, the programmer hints t1 = 'a -> 'a
-   and we infer t2 = int -> int. The resulting constraint will be satisfied,
-   even if the programmer wants a less strict type.
-   Solution(?): check that the substitutions do not change t1. *)
-let hint2constr (hint: typing option) (inferred: typing) (max_tvar: int) : (ConstrSet.t * int)= match hint with
-  | None -> (ConstrSet.empty, max_tvar)
-  | Some(t) -> let (t',max') = refresh t max_tvar in
-               (ConstrSet.add (t',inferred) ConstrSet.empty,max')
+let refresh_tsch ((l,t): tscheme) (max: int) = 
+  let (t', max, m) = refresh_helper t max IntMap.empty in
+  let l' = List.filter_map (fun i -> IntMap.find_opt i m) l in
+  ((l',t'), max)
 
-type infer_error = NameWithoutType of name | UnsatConstr of pexpr * (constr list)
+(* Is t1 equal to t2 or stricter than it? 
+   Example: stricter_or_equal ('a 'b. 'a -> 'b) ([]. int -> bool)
+   is false. Inverting the parameters would change the answer to true. *)
+let stricter_or_equal (t1: tscheme) (t2: tscheme) =
+  let (t1',max) = instantiate (-1) t1 in
+  let (t2',_) = instantiate max t2 in
+  let constrs = ConstrSet.add (t1',t2') ConstrSet.empty in
+  match unify constrs with
+  | Ok(substs) -> let (_,t1'') = dotsubsts substs ([],t1') in
+                  let t1'r = (refresh t1' (-1)) in
+                  let t1''r = (refresh t1'' (-1)) in
+                  t1'r = t1''r
+  | Error(_) -> false
+;;
+
+type infer_error = 
+  | NameWithoutType of name 
+  | UnsatConstr of pexpr * (constr list)
+  | BadTypeHint of ide * tscheme * tscheme
 
 (* We infer the type of an expression in a certain type environment.
    The result is a type, a set of constraints, and an annotated parse tree.
@@ -270,28 +288,51 @@ let rec getconstrs (env: tenv) (max_tvar: int) = function
 
   (* let-in: create a fresh variable for the type of x and add it to the environment.
      Then, infer the type of x with its constraints.
-     Add a constraint that the type of x is the same as its type hint.
      Finish inference of x and get its final type scheme, then bind it in our tenv in place of the previously generated type variable.
+     Check that the type hint, if any, is stricter or equal to the inferred type.
      Finally, infer the type of e2 and add its constraints. *)
   | PLetIn(x,hint,e1,e2) as p -> ((* modified to allow recursion *)
+    (* Create a fresh variable for the type of x *)
     let fresh_i = 1+max_tvar in 
     let fresh = TVar fresh_i in
+
+    (* Add it to the environment and perform inference on it *)
     let env' = tbind (NVar x) ([],fresh) env in
     match getconstrs env' fresh_i e1 with
-    | Error(_) as err -> err
+    | Error(_) as err -> err (* couldn't infer the type *)
     | Ok(t1,e1',max,c1) -> (
-      let (chint,max) = hint2constr hint t1 max in
-      let c1 = ConstrSet.union c1 chint in
-      match generalize_nobind c1 env' t1 with
-      | Error(err) -> Error(UnsatConstr(p, err))
-      | Ok((diffl,u1), env1) -> (
-        let gen_env = tbind (NVar x) (diffl,u1) env1 in
+
+      (* finish type inference on x, getting its final type scheme *)
+      match (hint, generalize_nobind c1 env' t1) with
+      | (_,Error(err)) -> Error(UnsatConstr(p, err)) (* couldn't satisfy the constraints *)
+
+      (* if we have a type hint available *)
+      | (Some tschint, Ok(inferred, env1)) -> (
+        (* bind hinted type scheme instead of inferred,
+           as the hint may be stricter.
+           Adapt it by using fresh variables.
+           (Actually this may not be needed, I'll disable it for now )
+        let (tschint,max) = refresh_tsch tschint max in *)
+        let gen_env = tbind (NVar x) tschint env1 in
+
+        if stricter_or_equal tschint inferred 
+        then (match getconstrs gen_env max e2 with
+          | Error(_) as err -> err
+          | Ok(t2,e2',max,c2) -> 
+            let united = ConstrSet.union c1 c2 in
+            Ok(t2,ALetIn(x,tschint, e1', e2'), max,united)
+        )
+        else Error(BadTypeHint(x, tschint, inferred))
+      )
+
+      (* if we don't *)
+      | (None, Ok(inferred, env1)) -> (
+        let gen_env = tbind (NVar x) inferred env1 in
         match getconstrs gen_env max e2 with
-        | Error(_) as err -> err
-        | Ok(t2,e2',max,c2) -> 
-          let united = ConstrSet.union c1 c2 in
-          let (instantiated,_) = instantiate 0 (diffl,u1) in
-          Ok(t2,ALetIn(x,instantiated, e1', e2'), max,united)
+          | Error(_) as err -> err
+          | Ok(t2,e2',max,c2) -> 
+            let united = ConstrSet.union c1 c2 in
+            Ok(t2,ALetIn(x,inferred, e1', e2'), max,united)
       )
     )
   )

@@ -23,6 +23,7 @@ open Parsingast
 %token EQUAL
 %token LET
 %token IN
+%token DOT
 
 (* SEPARATORS *)
 %token LPAREN
@@ -63,11 +64,15 @@ For example, "not 1 = 2 * 3" is parsed as "not (1 = (2 * 3))" *)
 prog:
     | e = expr EOF { e }
 
+typescheme:
+    | l = TYPEVAR+ DOT t = typing { (l,t) }
+    | t = typing { ([],t) }
+
 typing:
     | INT { TInt }
     | BOOL { TBool }
     | t1 = typing TO t2 = typing { TFun(t1,t2) }
-    | tvar = TYPEVAR { TVar(tvar) }
+    | t = TYPEVAR { TVar(t) }
     | LPAREN t = typing RPAREN { t }
 
 expr:
@@ -76,7 +81,7 @@ expr:
 
     | IF; e1 = expr; THEN; e2 = expr; ELSE; e3 = expr; { PIf(e1, e2, e3) }
     | LET x = IDE EQUAL e1 = expr IN e2 = expr { PLetIn(x,None,e1,e2) }
-    | LET x = IDE COLON t=typing EQUAL e1 = expr IN e2 = expr { PLetIn(x,Some t,e1,e2) }
+    | LET x = IDE COLON tsch=typescheme EQUAL e1 = expr IN e2 = expr { PLetIn(x,Some tsch,e1,e2) }
 
     | c = const { c }
     | e1 = expr; op = binop; e2 = expr; { PApp(PApp(PName(NBop op), e1), e2) }

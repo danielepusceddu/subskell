@@ -32,6 +32,7 @@ rule read =
   | "(" { LPAREN }
   | ")" { RPAREN }
   | ":" { COLON }
+  | "." { DOT }
 
   | "if" { IF }
   | "then" { THEN }
