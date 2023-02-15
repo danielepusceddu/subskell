@@ -1,4 +1,5 @@
-(executable
- (public_name tests)
- (name main)
+(library
+ (name tests)
+ (inline_tests)
+ (preprocess (pps ppx_inline_test))
  (libraries subskellLib))
