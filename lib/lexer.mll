@@ -11,10 +11,12 @@ let chr = ['a'-'z' 'A'-'Z' '0'-'9']
 let id = letter chr*
 let typevar = ['\''] lowerchr+
 let num = ['0'-'9']+
+let comment = "(*" [' '-'~']* "*)"
 
 rule read =
   parse
   | white { read lexbuf }
+  | comment { read lexbuf }
 
   | "+" { PLUS }
   | "-" { MINUS }
