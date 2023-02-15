@@ -78,3 +78,15 @@ let string_of_infer_error err =
   | NameWithoutType(n) -> "name \"" ^ (string_of_name n) ^ "\" without type"
   | UnsatConstr(_, constrs) -> "Unsatisfiable constraints " ^ (string_of_constrl constrs)
   | BadTypeHint(x, hint, inferred) -> "bad type hint for " ^ x ^ ": (" ^ (string_of_tscheme hint) ^ "), should be " ^ (string_of_tscheme inferred)
+
+let rec string_of_aexpr = function
+  | ANum n -> string_of_int n
+  | ABool b -> string_of_bool b
+  | AFun(x,ae) -> "fun " ^ x ^ " -> " ^ (string_of_aexpr ae)
+  | AApp(AName _ as ae1,ae2) -> (string_of_aexpr ae1) ^ " (" ^ (string_of_aexpr ae2) ^ ")" 
+  | AApp(ae1,(AName _ as ae2)) -> "(" ^ (string_of_aexpr ae1) ^ ") " ^ (string_of_aexpr ae2)
+  | AApp(ae1,ae2) -> "(" ^ (string_of_aexpr ae1) ^ ") (" ^ (string_of_aexpr ae2) ^ ")" 
+  | AIf(ae1,ae2,ae3) -> "if " ^ (string_of_aexpr ae1) ^ " then " ^ (string_of_aexpr ae2) ^ " else " ^ (string_of_aexpr ae3)
+  | AName(NBop _ as n) | AName(NUop _ as n) -> "(" ^ (string_of_name n) ^ ")"
+  | AName n -> string_of_name n
+  | ALetIn(x,tsch,ae1,ae2) -> "let " ^ x ^ " : " ^ (string_of_tscheme tsch) ^ " = " ^ (string_of_aexpr ae1) ^ "\nin " ^ (string_of_aexpr ae2)
