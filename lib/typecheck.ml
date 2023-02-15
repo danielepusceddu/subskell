@@ -174,11 +174,6 @@ let rec refresh_helper (t: typing) (max_tvar: int) (m: int IntMap.t) = match t w
 let  refresh (t: typing) (max_tvar: int) = 
   let (newt,_,_) = refresh_helper t max_tvar (IntMap.empty) in newt
 
-let refresh_tsch ((l,t): tscheme) (max: int) = 
-  let (t', max, m) = refresh_helper t max IntMap.empty in
-  let l' = List.filter_map (fun i -> IntMap.find_opt i m) l in
-  ((l',t'), max)
-
 (* Is t1 equal to t2 or stricter than it? 
    Example: stricter_or_equal ('a 'b. 'a -> 'b) ([]. int -> bool)
    is false. Inverting the parameters would change the answer to true. *)
@@ -291,10 +286,7 @@ let rec getconstrs (env: tenv) (max_tvar: int) = function
       (* if we have a type hint available *)
       | (Some tschint, Ok(inferred, env1)) -> (
         (* bind hinted type scheme instead of inferred,
-           as the hint may be stricter.
-           Adapt it by using fresh variables.
-           (Actually this may not be needed, I'll disable it for now )
-        let (tschint,max) = refresh_tsch tschint max in *)
+           as the hint may be stricter. *)
         let gen_env = tbind (NVar x) tschint env1 in
 
         if stricter_or_equal tschint inferred 
