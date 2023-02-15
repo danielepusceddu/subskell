@@ -138,6 +138,25 @@ let rec vars_in_t = function
 | TVar x -> IntSet.add x (IntSet.empty)
 | TFun(t1,t2) -> IntSet.union (vars_in_t t1) (vars_in_t t2)
 
+(* The set of type variables that are not captured in a type scheme. *)
+let free_tvars ((l,t): tscheme) : IntSet.t = 
+  let vars = vars_in_t t in
+  IntSet.diff vars (List.to_seq l |> IntSet.of_seq)
+
+(* The set of free type variables that occur in one or more elements of a list of type schemes. *)
+let free_tvars_l (l: tscheme list) : IntSet.t =
+  List.fold_right (fun t acc -> IntSet.union acc (free_tvars t)) l IntSet.empty
+
+let rec hints_in_past (p: pexpr) : tscheme list = match p with
+  | PLetIn(_, Some tsch, e1, e2) -> tsch::(hints_in_past e1)@(hints_in_past e2)
+  | PLetIn(_, None, e1, e2) -> (hints_in_past e1)@(hints_in_past e2)
+  | PNum _
+  | PName _
+  | PBool _ -> []
+  | PFun(_, e) -> hints_in_past e
+  | PApp(e1, e2) -> (hints_in_past e1)@(hints_in_past e2)
+  | PIf(e1, e2, e3) -> (hints_in_past e1)@(hints_in_past e2)@(hints_in_past e3)
+
 (* The set of type variables that occur in a type environment. *)
 let vars_in_env (env: tenv) : (IntSet.t) = 
 let b = NameMap.bindings env in
@@ -316,7 +335,10 @@ let rec getconstrs (env: tenv) (max_tvar: int) = function
    solves the constraints and applies the resulting substitution to
    get the final type. *)
 let tinfer_expr (env: tenv) (e: pexpr) = 
-  match getconstrs env (-1) e with
+  let hints = hints_in_past e in
+  let free = free_tvars_l hints in
+  let max_free = if (IntSet.cardinal free) = 0 then -1 else IntSet.max_elt free in
+  match getconstrs env max_free e with
   | Error(_) as err -> err
   | Ok(t,e',_,constrs) -> (
     match unify constrs with
