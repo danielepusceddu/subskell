@@ -11,7 +11,7 @@ let chr = ['a'-'z' 'A'-'Z' '0'-'9']
 let id = letter chr*
 let typevar = ['\''] lowerchr+
 let num = ['0'-'9']+
-let comment = "(*" [' '-'~']* "*)"
+let comment = "(*" ['\t' '\n' ' '-'~']* "*)"
 
 rule read =
   parse
