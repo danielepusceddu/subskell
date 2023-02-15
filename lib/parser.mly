@@ -58,8 +58,8 @@ For example, "not 1 = 2 * 3" is parsed as "not (1 = (2 * 3))" *)
 %left PLUS MINUS
 %left PRODUCT
 
-%nonassoc IF LAMBDA LET IDE LPAREN TRUE FALSE NUM (* Tokens an expresison can start with. The relative priority level with respect to the level of APP determines the associativity of applications (left) *)
-%nonassoc APP (* Reduce applications eagerly as soon as two space-separated expressions are read. For example, "foo 1*2" is parsed as "(foo 1)*2" instead of "foo (1*2)" *)
+%nonassoc IF LAMBDA LET IDE LPAREN TRUE FALSE NUM (* Tokens an expression can start with. The relative priority level with respect to the level of APP determines the associativity of applications (left) *)
+%nonassoc APP (* Reduce applications eagerly, as soon as two space-separated expressions are read. For example, "foo 1*2" is parsed as "(foo 1)*2" instead of "foo (1*2)" *)
 %%
 
 prog:
