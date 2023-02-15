@@ -3,7 +3,7 @@ open Parser
 open Base26p
 }
 
-let white = [' ' '\t' '\n']+
+let white = [' ' '\t' '\n' '\r']+
 let vertical = ['\n']+
 let letter = ['a'-'z' 'A'-'Z']
 let lowerchr = ['a'-'z']
